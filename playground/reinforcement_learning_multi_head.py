@@ -4,19 +4,16 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from core.delayed_core import DelayedCore
 
-from mushroom_rl.algorithms.actor_critic import DDPG, TD3, SAC
+from agents.multi_head_ddpg import MultiHeadDDPG
 from mushroom_rl.core import Core, Logger
 from mushroom_rl.environments.gym_env import Gym
 from mushroom_rl.policy import OrnsteinUhlenbeckPolicy
 from mushroom_rl.utils.dataset import compute_J
 
 from tqdm import trange
-import time
-import sys
 
-from networks.networks import CriticNetwork, ActorNetwork
+from networks.networks import MultiHeadCriticNetwork, ActorNetwork
 
 
 def experiment(alg, n_epochs, n_steps, n_steps_test):
@@ -31,8 +28,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
     # MDP
     horizon = 200
     gamma = 0.99
-    mdp = Gym('Humanoid-v3', horizon, gamma)
-
+    mdp = Gym('Pendulum-v1', horizon, gamma)
 
     # Policy
     policy_class = OrnsteinUhlenbeckPolicy
@@ -42,7 +38,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
     initial_replay_size = 500
     max_replay_size = 5000
     batch_size = 200
-    n_features = 80
+    n_features = 512
     tau = .001
 
     # Approximator
@@ -57,13 +53,14 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
                        'params': {'lr': .001}}
 
     critic_input_shape = (actor_input_shape[0] + mdp.info.action_space.shape[0],)
-    critic_params = dict(network=CriticNetwork,
+    critic_params = dict(network=MultiHeadCriticNetwork,
                          optimizer={'class': optim.Adam,
                                     'params': {'lr': .001}},
                          loss=F.mse_loss,
                          n_features=n_features,
                          input_shape=critic_input_shape,
                          output_shape=(1,),
+                         head_prob = 0.7,
                          use_cuda=use_cuda)
 
     # Agent
@@ -72,7 +69,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
                 initial_replay_size, max_replay_size, tau)
 
     # Algorithm
-    core = DelayedCore(agent, mdp)
+    core = Core(agent, mdp)
 
     core.learn(n_steps=initial_replay_size, n_steps_per_fit=initial_replay_size)
 
@@ -97,7 +94,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
 
 
 if __name__ == '__main__':
-    algs = [DDPG, TD3]
+    algs = [MultiHeadDDPG]
 
     for alg in algs:
         experiment(alg=alg, n_epochs=40, n_steps=1000, n_steps_test=2000)
