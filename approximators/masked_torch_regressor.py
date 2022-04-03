@@ -90,10 +90,14 @@ class MaskedTorchApproximator(Serializable):
         Returns:
             The predictions of the model.
         """
+        mask = self.network.get_heads_mask()
+        #print(f"mask in regressor {mask}")
         if not self._use_cuda:
             torch_args = [torch.from_numpy(x) if isinstance(x, np.ndarray) else x
                           for x in args]
             val = self.network.forward(*torch_args, **kwargs)
+            if  self.use_mask:
+                val = torch.mul(val, mask)
 
             if output_tensor:
                 return val
@@ -104,8 +108,11 @@ class MaskedTorchApproximator(Serializable):
         else:
             torch_args = [torch.from_numpy(x).cuda()
                           if isinstance(x, np.ndarray) else x.cuda() for x in args]
+            mask = mask.cuda()
             val = self.network.forward(*torch_args,
                                        **kwargs)
+            if  self.use_mask:
+                val = torch.mul(val, mask)
 
             if output_tensor:
                 return val

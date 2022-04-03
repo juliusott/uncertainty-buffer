@@ -3,11 +3,13 @@ import numpy as np
 from mushroom_rl.algorithms.actor_critic.deep_actor_critic import DeepAC
 from mushroom_rl.policy import Policy
 from mushroom_rl.approximators import Regressor
+import torch
 from approximators.masked_torch_regressor import  MaskedTorchApproximator
 from mushroom_rl.approximators.parametric import TorchApproximator
-from mushroom_rl.utils.replay_memory import ReplayMemory
+from mushroom_rl.utils.replay_memory import ReplayMemory, PrioritizedReplayMemory
 from mushroom_rl.utils.parameters import Parameter, to_parameter
 from copy import deepcopy
+import torch.nn.functional as F
 
 class MultiHeadDDPG(DeepAC):
     """
@@ -54,7 +56,7 @@ class MultiHeadDDPG(DeepAC):
         self._policy_delay = to_parameter(policy_delay)
         self._fit_count = 0
 
-        self._replay_memory = ReplayMemory(initial_replay_size, max_replay_size)
+        self._replay_memory = PrioritizedReplayMemory(initial_replay_size, max_replay_size, alpha=0.1, beta=0.9)
 
         self.n_heads = critic_params["output_shape"][0]
         self.critic = critic_params["network"]
@@ -97,17 +99,26 @@ class MultiHeadDDPG(DeepAC):
         super().__init__(mdp_info, policy, actor_optimizer, policy_parameters)
 
     def fit(self, dataset):
-        self._replay_memory.add(dataset)
+        self._replay_memory.add(dataset, p=np.ones(shape=(len(dataset,))))
         if self._replay_memory.initialized:
-            state, action, reward, next_state, absorbing, _ =\
+            state, action, reward, next_state, absorbing, _ , idx, _=\
                 self._replay_memory.get(self._batch_size())
 
             q_next = self._next_q(next_state, absorbing)
+
             q = np.repeat(np.expand_dims(reward, axis=1),self.n_heads, axis=1) + self.mdp_info.gamma * q_next
 
             self._critic_approximator.fit(state, action, q,
                                           **self._critic_fit_params)
 
+            td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
+            #print(f"td pred {td_pred[0]} q {q[0]}")
+            critic_var = np.std(td_pred[:, td_pred[0].nonzero()], axis=-1)
+
+            td_error = td_pred[:, td_pred[0].nonzero()] - q[:, td_pred[0].nonzero()]
+            #print(f"td pred {td_pred[:, td_pred[0].nonzero()][0]} q {q[:, td_pred[0].nonzero()][0]}")
+            td_error = np.squeeze(td_error)
+            self._replay_memory.update(np.squeeze(critic_var), idx=idx)
             if self._fit_count % self._policy_delay() == 0:
                 loss = self._loss(state)
                 self._optimize_actor_parameters(loss)
