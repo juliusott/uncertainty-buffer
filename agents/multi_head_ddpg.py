@@ -109,7 +109,7 @@ class MultiHeadDDPG(DeepAC):
 
             q = np.repeat(np.expand_dims(reward, axis=1),self.n_heads, axis=1) + self.mdp_info.gamma * q_next
 
-            self._critic_approximator.fit(state, action, q,
+            self._critic_approximator.fit(state, action, q, num_visits=num_visits,
                                           **self._critic_fit_params)
 
             td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
@@ -121,7 +121,7 @@ class MultiHeadDDPG(DeepAC):
             td_error = np.squeeze(td_error)
             self._replay_memory.update(np.squeeze(critic_prediction), num_visits = num_visits ,idx=idx)
             if self._fit_count % self._policy_delay() == 0:
-                loss = self._loss(state)
+                loss = self._loss(state, num_visits)
                 self._optimize_actor_parameters(loss)
 
             self._update_target(self._critic_approximator,
@@ -131,9 +131,9 @@ class MultiHeadDDPG(DeepAC):
 
             self._fit_count += 1
 
-    def _loss(self, state):
+    def _loss(self, state, num_visits):
         action = self._actor_approximator(state, output_tensor=True, **self._actor_predict_params)
-        q = self._critic_approximator(state, action, output_tensor=True, **self._critic_predict_params)
+        q = self._critic_approximator(state, action, output_tensor=True, **self._critic_predict_params) / torch.from_numpy(np.expand_dims(num_visits, axis=1)).cuda()
 
         return -q.mean()
 

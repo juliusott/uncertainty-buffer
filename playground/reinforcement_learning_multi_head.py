@@ -6,6 +6,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 from agents.multi_head_ddpg import MultiHeadDDPG
+from agents.multi_head_TD3 import MultiHeadTD3
 from mushroom_rl.core import Core, Logger
 from mushroom_rl.environments.gym_env import Gym
 from mushroom_rl.policy import OrnsteinUhlenbeckPolicy
@@ -17,7 +18,7 @@ from networks.networks import MultiHeadCriticNetwork, ActorNetwork
 
 
 def experiment(alg, n_epochs, n_steps, n_steps_test):
-    np.random.seed()
+    #np.random.seed()
 
     logger = Logger(alg.__name__, results_dir=None)
     logger.strong_line()
@@ -94,7 +95,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
 
 
 if __name__ == '__main__':
-    algs = [MultiHeadDDPG]
+    algs = [MultiHeadTD3, MultiHeadDDPG]
 
     for alg in algs:
         experiment(alg=alg, n_epochs=40, n_steps=1000, n_steps_test=2000)

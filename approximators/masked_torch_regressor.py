@@ -123,7 +123,7 @@ class MaskedTorchApproximator(Serializable):
 
         return val
 
-    def fit(self, *args, n_epochs=None, weights=None, epsilon=None, patience=1,
+    def fit(self, *args, num_visits, n_epochs=None, weights=None, epsilon=None, patience=1,
             validation_split=1., **kwargs):
         """
         Fit the model.
@@ -177,7 +177,7 @@ class MaskedTorchApproximator(Serializable):
                       dynamic_ncols=True, disable=self._quiet,
                       leave=False) as t_epochs:
                 while patience_count < patience and epochs_count < n_epochs:
-                    mean_loss_current = self._fit_epoch(train_args, use_weights,
+                    mean_loss_current = self._fit_epoch(train_args,num_visits, use_weights,
                                                         kwargs)
 
                     if len(val_args[0]):
@@ -205,7 +205,7 @@ class MaskedTorchApproximator(Serializable):
         else:
             with trange(n_epochs, disable=self._quiet) as t_epochs:
                 for _ in t_epochs:
-                    mean_loss_current = self._fit_epoch(train_args, use_weights,
+                    mean_loss_current = self._fit_epoch(train_args,num_visits, use_weights,
                                                         kwargs)
 
                     if not self._quiet:
@@ -216,7 +216,7 @@ class MaskedTorchApproximator(Serializable):
         if self._dropout:
             self.network.eval()
 
-    def _fit_epoch(self, args, use_weights, kwargs):
+    def _fit_epoch(self, args, num_visits, use_weights, kwargs):
         self.network.update_heads_mask()
         if self._batch_size > 0:
             batches = minibatch_generator(self._batch_size, *args)
@@ -225,14 +225,14 @@ class MaskedTorchApproximator(Serializable):
 
         loss_current = list()
         for batch in batches:
-            loss_current.append(self._fit_batch(batch, use_weights, kwargs))
+            loss_current.append(self._fit_batch(batch,num_visits, use_weights, kwargs))
 
         mean_loss_current = np.mean(loss_current)
 
         return mean_loss_current
 
-    def _fit_batch(self, batch, use_weights, kwargs):
-        loss = self._compute_batch_loss(batch, use_weights, kwargs)
+    def _fit_batch(self, batch,num_visits, use_weights, kwargs):
+        loss = self._compute_batch_loss(batch, num_visits, use_weights, kwargs)
 
         self._optimizer.zero_grad()
         loss.backward()
@@ -240,7 +240,7 @@ class MaskedTorchApproximator(Serializable):
 
         return loss.item()
 
-    def _compute_batch_loss(self, batch, use_weights, kwargs):
+    def _compute_batch_loss(self, batch, num_visits, use_weights, kwargs):
         if use_weights:
             weights = torch.from_numpy(batch[-1]).type(torch.float)
             if self._use_cuda:
@@ -251,7 +251,8 @@ class MaskedTorchApproximator(Serializable):
             torch_args = [torch.from_numpy(x) for x in batch]
         else:
             torch_args = [torch.from_numpy(x).cuda() for x in batch]
-
+            num_visits = torch.from_numpy(num_visits).cuda()
+            
         x = torch_args[:-self._n_fit_targets]
 
         y_hat = self.network(*x, **kwargs)
@@ -274,7 +275,7 @@ class MaskedTorchApproximator(Serializable):
         if not self.use_mask:
             loss = self._loss(y_hat, *y)
         else:
-            loss = self._loss(y_hat, *y, reduction='none')
+            loss = self._loss(y_hat, *y, reduction='none') / num_visits.unsqueeze(dim=1)
             loss = loss.mean(dim=0)
             loss @= mask
             loss = (loss / mask.sum()).sum()
