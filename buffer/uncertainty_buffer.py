@@ -227,6 +227,7 @@ class UncertaintyReplayMemory(Serializable):
 
         a = np.arange(n_samples) * segment
         b = np.arange(1, n_samples + 1) * segment
+        # print(f"a {a}, b {b}")
         samples = np.random.uniform(a, b)
         for i, s in enumerate(samples):
             idx, p, data = self._tree.get(s)
@@ -260,10 +261,11 @@ class UncertaintyReplayMemory(Serializable):
         self._tree.update(idx, p)
 
     def _get_priority(self, critic_prediction, num_visits):
-        mean = np.exp(np.mean(critic_prediction, axis=-1) - self.max_priority)
+        # mean = np.mean(critic_prediction, axis=-1) 
         std = np.std(critic_prediction, axis=-1)
+        #print(f"mean {mean} std {std}")
         num_visits += 1
-        return (mean/std * (1-(1/num_visits)) + std/num_visits + self._epsilon) ** self._alpha
+        return (std/num_visits + self._epsilon) ** self._alpha
 
     @property
     def initialized(self):

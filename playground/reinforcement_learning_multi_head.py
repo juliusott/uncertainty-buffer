@@ -28,7 +28,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
     # MDP
     horizon = 200
     gamma = 0.99
-    mdp = Gym('Pendulum-v1', horizon, gamma)
+    mdp = Gym('Humanoid-v3', horizon, gamma)
 
     # Policy
     policy_class = OrnsteinUhlenbeckPolicy
