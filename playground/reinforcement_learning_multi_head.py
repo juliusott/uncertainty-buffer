@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from agents.multi_head_ddpg import MultiHeadDDPG
 from agents.multi_head_TD3 import MultiHeadTD3
+from agents.mult_head_sac import MultiHeadSAC
 from mushroom_rl.core import Core, Logger
 from mushroom_rl.environments.gym_env import Gym
 from mushroom_rl.policy import OrnsteinUhlenbeckPolicy
@@ -39,7 +40,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
     initial_replay_size = 500
     max_replay_size = 5000
     batch_size = 200
-    n_features = 512
+    n_features = 64
     tau = .001
 
     # Approximator
@@ -49,6 +50,12 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
                         input_shape=actor_input_shape,
                         output_shape=mdp.info.action_space.shape,
                         use_cuda=use_cuda)
+
+    actor_sigma_params = dict(network=ActorNetwork,
+                              n_features=n_features,
+                              input_shape=actor_input_shape,
+                              output_shape=mdp.info.action_space.shape,
+                              use_cuda=use_cuda)
 
     actor_optimizer = {'class': optim.Adam,
                        'params': {'lr': .001}}
@@ -65,7 +72,16 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
                          use_cuda=use_cuda)
 
     # Agent
-    agent = alg(mdp.info, policy_class, policy_params,
+    if "SAC" in alg.__name__:
+        warmup_transitions = 100
+        tau = 0.005
+        lr_alpha = 3e-4
+        agent = alg(mdp.info, actor_params, actor_sigma_params,
+                actor_optimizer, critic_params, batch_size, initial_replay_size,
+                max_replay_size, warmup_transitions, tau, lr_alpha,
+                critic_fit_params=None)
+    else:
+        agent = alg(mdp.info, policy_class, policy_params,
                 actor_params, actor_optimizer, critic_params, batch_size,
                 initial_replay_size, max_replay_size, tau)
 
@@ -95,7 +111,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
 
 
 if __name__ == '__main__':
-    algs = [MultiHeadTD3, MultiHeadDDPG]
+    algs = [MultiHeadSAC, MultiHeadTD3, MultiHeadDDPG]
 
     for alg in algs:
         experiment(alg=alg, n_epochs=40, n_steps=1000, n_steps_test=2000)

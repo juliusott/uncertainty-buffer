@@ -285,6 +285,14 @@ class UncertaintyReplayMemory(Serializable):
 
         """
         return self._tree.max_p if self.initialized else 1.
+    
+    @property
+    def size(self):
+        """
+        Returns:
+            The number of elements contained in the replay memory.
+        """
+        return self._tree.size
 
     def _post_load(self):
         if self._tree is None:
