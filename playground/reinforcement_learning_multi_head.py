@@ -112,7 +112,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
 
 
 if __name__ == '__main__':
-    algs = [MultiHeadSAC, MultiHeadTD3, MultiHeadDDPG]
+    algs = [MultiHeadTD3, MultiHeadDDPG, MultiHeadSAC]
 
     for alg in algs:
         experiment(alg=alg, n_epochs=4000, n_steps=1000, n_steps_test=2000)

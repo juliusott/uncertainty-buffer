@@ -78,6 +78,9 @@ class UncertaintySumTree(object):
         """
         idx = self._retrieve(s, 0)
         data_idx = idx - self._max_size + 1
+        if self._data[data_idx] is None:
+            data_idx -= 1
+            print(f"index exceed range")
         self._data[data_idx][6] += 1 # Update the num visits of the sampled state
 
         return idx, self._tree[idx], self._data[data_idx]
@@ -229,7 +232,8 @@ class UncertaintyReplayMemory(Serializable):
 
         a = np.arange(n_samples) * segment
         b = np.arange(1, n_samples + 1) * segment
-        # print(f"a {a}, b {b}")
+        if a.any() == np.nan or b.any() == np.nan:
+            print(f"a {a}, b {b}")
         samples = np.random.uniform(a, b)
         for i, s in enumerate(samples):
             idx, p, data = self._tree.get(s)
@@ -242,8 +246,8 @@ class UncertaintyReplayMemory(Serializable):
             next_states[i] = np.array(next_states[i])
 
         sampling_probabilities = priorities / self._tree.total_p
-        is_weight = (self._tree.size * sampling_probabilities) ** -self._beta()
-        is_weight /= is_weight.max()
+        is_weight = sampling_probabilities
+        # is_weight /= is_weight.max()
 
         return np.array(states), np.array(actions), np.array(rewards),\
             np.array(next_states), np.array(absorbing), np.array(last),\
@@ -268,9 +272,9 @@ class UncertaintyReplayMemory(Serializable):
         #print(f"mean {mean} std {std}")
         num_visits = num_visits + np.ones(shape=num_visits.shape)
         mean_scale = 1 - 1/num_visits
-        priorities = (mean_scale*mean/std + std/num_visits + self._epsilon)
+        priorities = mean_scale*mean/std + std/num_visits + self._epsilon
         priorities_norm = priorities - self.max_priority
-        priorities = np.exp(priorities) ** 0.1
+        priorities = np.exp(priorities_norm) ** 0.1
         priorities[priorities==np.inf] = self.max_priority
         return priorities
 
