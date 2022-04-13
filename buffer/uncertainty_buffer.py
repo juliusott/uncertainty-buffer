@@ -268,11 +268,11 @@ class UncertaintyReplayMemory(Serializable):
         #print(f"mean {mean} std {std}")
         num_visits = num_visits + np.ones(shape=num_visits.shape)
         mean_scale = 1 - 1/num_visits
-        priorities = (mean_scale*mean/std + std/num_visits + self._epsilon) ** self._alpha
+        priorities = (mean_scale*mean/std + std/num_visits + self._epsilon)
         priorities_norm = priorities - self.max_priority
-        priorities = np.exp(priorities.astype(np.float128)) ** 0.1
+        priorities = np.exp(priorities) ** 0.1
         priorities[priorities==np.inf] = self.max_priority
-        return priorities.astype(np.float32)
+        return priorities
 
     @property
     def initialized(self):
