@@ -96,15 +96,16 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
     R = np.mean(compute_J(dataset))
 
     logger.epoch_info(0, J=J, R=R)
-
+    rewards = list()
     for n in trange(n_epochs, leave=False):
         core.learn(n_steps=n_steps, n_steps_per_fit=1)
         dataset = core.evaluate(n_steps=n_steps_test, render=False)
         J = np.mean(compute_J(dataset, gamma))
         R = np.mean(compute_J(dataset))
-
+        rewards.append(R)
         logger.epoch_info(n+1, J=J, R=R)
 
+    np.save( alg.__name__+".npy", np.asarray(rewards))
     #logger.info('Press a button to visualize pendulum')
     #input()
     #core.evaluate(n_episodes=5, render=True)
@@ -114,4 +115,4 @@ if __name__ == '__main__':
     algs = [MultiHeadSAC, MultiHeadTD3, MultiHeadDDPG]
 
     for alg in algs:
-        experiment(alg=alg, n_epochs=40, n_steps=1000, n_steps_test=2000)
+        experiment(alg=alg, n_epochs=4000, n_steps=1000, n_steps_test=2000)

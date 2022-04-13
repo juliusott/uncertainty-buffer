@@ -197,6 +197,8 @@ class UncertaintyReplayMemory(Serializable):
 
         """
         assert n_steps_return > 0
+        #maximum priority for new samples
+        p *= self.max_priority
 
         self._tree.add(dataset, p, n_steps_return, gamma)
 
@@ -261,11 +263,16 @@ class UncertaintyReplayMemory(Serializable):
         self._tree.update(idx, p)
 
     def _get_priority(self, critic_prediction, num_visits):
-        # mean = np.mean(critic_prediction, axis=-1) 
+        mean = np.mean(critic_prediction, axis=-1) 
         std = np.std(critic_prediction, axis=-1)
         #print(f"mean {mean} std {std}")
-        num_visits += 1
-        return (std/num_visits + self._epsilon) ** self._alpha
+        num_visits = num_visits + np.ones(shape=num_visits.shape)
+        mean_scale = 1 - 1/num_visits
+        priorities = (mean_scale*mean/std + std/num_visits + self._epsilon) ** self._alpha
+        priorities_norm = priorities - self.max_priority
+        priorities = np.exp(priorities.astype(np.float128)) ** 0.1
+        priorities[priorities==np.inf] = self.max_priority
+        return priorities.astype(np.float32)
 
     @property
     def initialized(self):

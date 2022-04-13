@@ -249,6 +249,7 @@ class MaskedTorchApproximator(Serializable):
 
         if not self._use_cuda:
             torch_args = [torch.from_numpy(x) for x in batch]
+            num_visits = torch.from_numpy(num_visits)
         else:
             torch_args = [torch.from_numpy(x).cuda() for x in batch]
             num_visits = torch.from_numpy(num_visits).cuda()

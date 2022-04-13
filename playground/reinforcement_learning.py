@@ -20,7 +20,7 @@ from networks.networks import CriticNetwork, ActorNetwork
 
 
 def experiment(alg, n_epochs, n_steps, n_steps_test):
-    np.random.seed()
+    #np.random.seed()
 
     logger = Logger(alg.__name__, results_dir=None)
     logger.strong_line()
@@ -33,7 +33,6 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
     gamma = 0.99
     mdp = Gym('Humanoid-v3', horizon, gamma)
 
-
     # Policy
     policy_class = OrnsteinUhlenbeckPolicy
     policy_params = dict(sigma=np.ones(1) * .2, theta=.15, dt=1e-2)
@@ -42,7 +41,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
     initial_replay_size = 500
     max_replay_size = 5000
     batch_size = 200
-    n_features = 80
+    n_features = 64
     tau = .001
 
     # Approximator
@@ -52,6 +51,12 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
                         input_shape=actor_input_shape,
                         output_shape=mdp.info.action_space.shape,
                         use_cuda=use_cuda)
+
+    actor_sigma_params = dict(network=ActorNetwork,
+                              n_features=n_features,
+                              input_shape=actor_input_shape,
+                              output_shape=mdp.info.action_space.shape,
+                              use_cuda=use_cuda)
 
     actor_optimizer = {'class': optim.Adam,
                        'params': {'lr': .001}}
@@ -64,15 +69,25 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
                          n_features=n_features,
                          input_shape=critic_input_shape,
                          output_shape=(1,),
+                         head_prob = 0.7,
                          use_cuda=use_cuda)
 
     # Agent
-    agent = alg(mdp.info, policy_class, policy_params,
+    if "SAC" in alg.__name__:
+        warmup_transitions = 100
+        tau = 0.005
+        lr_alpha = 3e-4
+        agent = alg(mdp.info, actor_params, actor_sigma_params,
+                actor_optimizer, critic_params, batch_size, initial_replay_size,
+                max_replay_size, warmup_transitions, tau, lr_alpha,
+                critic_fit_params=None)
+    else:
+        agent = alg(mdp.info, policy_class, policy_params,
                 actor_params, actor_optimizer, critic_params, batch_size,
                 initial_replay_size, max_replay_size, tau)
 
     # Algorithm
-    core = DelayedCore(agent, mdp)
+    core = Core(agent, mdp)
 
     core.learn(n_steps=initial_replay_size, n_steps_per_fit=initial_replay_size)
 
@@ -82,14 +97,18 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
     R = np.mean(compute_J(dataset))
 
     logger.epoch_info(0, J=J, R=R)
-
+    rewards = list()
     for n in trange(n_epochs, leave=False):
         core.learn(n_steps=n_steps, n_steps_per_fit=1)
         dataset = core.evaluate(n_steps=n_steps_test, render=False)
         J = np.mean(compute_J(dataset, gamma))
         R = np.mean(compute_J(dataset))
 
+        rewards.append(R)
+
         logger.epoch_info(n+1, J=J, R=R)
+
+    np.save(np.asarray(rewards), alg.__name__+".npy")
 
     #logger.info('Press a button to visualize pendulum')
     #input()
@@ -97,7 +116,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
 
 
 if __name__ == '__main__':
-    algs = [DDPG, TD3]
+    algs = [SAC, DDPG, TD3]
 
     for alg in algs:
-        experiment(alg=alg, n_epochs=40, n_steps=1000, n_steps_test=2000)
+        experiment(alg=alg, n_epochs=4000, n_steps=1000, n_steps_test=2000)

@@ -66,7 +66,7 @@ class MultiHeadSAC(DeepAC):
         else:
             self._target_entropy = target_entropy
 
-        self._replay_memory = UncertaintyReplayMemory(initial_replay_size, max_replay_size, alpha=0.1, beta=0.9)
+        self._replay_memory = UncertaintyReplayMemory(initial_replay_size, max_replay_size, alpha=1, beta=0.9)
         """
         if 'n_models' in critic_params.keys():
             assert critic_params['n_models'] == 2
