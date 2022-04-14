@@ -16,7 +16,7 @@ class MultiHeadTD3(MultiHeadDDPG):
     def __init__(self, mdp_info, policy_class, policy_params, actor_params,
                  actor_optimizer, critic_params, batch_size,
                  initial_replay_size, max_replay_size, tau, policy_delay=2,
-                 noise_std=.2, noise_clip=.5, critic_fit_params=None):
+                 noise_std=.2, noise_clip=.5, critic_fit_params=None, warmup_transitions=100):
         """
         Constructor.
         Args:
@@ -61,7 +61,7 @@ class MultiHeadTD3(MultiHeadDDPG):
         super().__init__(mdp_info, policy_class, policy_params,  actor_params,
                          actor_optimizer, critic_params, batch_size,
                          initial_replay_size, max_replay_size, tau,
-                         policy_delay, critic_fit_params)
+                         policy_delay, critic_fit_params, warmup_transitions=warmup_transitions)
 
     def _loss(self, state, num_visits):
         action = self._actor_approximator(state, output_tensor=True, **self._actor_predict_params)

@@ -108,7 +108,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
 
         logger.epoch_info(n+1, J=J, R=R)
 
-    np.save(np.asarray(rewards), alg.__name__+".npy")
+    np.save( alg.__name__+".npy", np.asarray(rewards))
 
     #logger.info('Press a button to visualize pendulum')
     #input()

@@ -11,6 +11,7 @@ from approximators.masked_torch_regressor import  MaskedTorchApproximator
 from buffer.uncertainty_buffer import UncertaintyReplayMemory
 from mushroom_rl.utils.torch import to_float_tensor
 from mushroom_rl.utils.parameters import to_parameter
+import matplotlib.pyplot as plt
 
 from copy import deepcopy
 from itertools import chain
@@ -181,6 +182,13 @@ class MultiHeadSAC(DeepAC):
         q *= np.ones(q.shape) -  np.repeat(np.expand_dims(absorbing, axis=1), q.shape[-1], axis=1)
 
         return q
+
+    def save_buffer_snapshot(self, epoch):
+        priorities = self._replay_memory.priorities
+        fig, ax = plt.subplots(figsize=(10,7))
+        ax.bar(np.arange(len(priorities)), height=priorities)
+        fig.savefig(f"buffer_prios_epoch{epoch}.png")
+        plt.close()
 
     def _post_load(self):
         self._update_optimizer_parameters(self.policy.parameters())

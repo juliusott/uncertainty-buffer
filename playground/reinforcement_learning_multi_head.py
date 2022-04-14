@@ -37,11 +37,12 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
     policy_params = dict(sigma=np.ones(1) * .2, theta=.15, dt=1e-2)
 
     # Settings
-    initial_replay_size = 500
-    max_replay_size = 5000
+    initial_replay_size = 5000
+    max_replay_size = 50000
     batch_size = 200
     n_features = 64
     tau = .001
+    warmup_transitions = 100
 
     # Approximator
     actor_input_shape = mdp.info.observation_space.shape
@@ -73,7 +74,6 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
 
     # Agent
     if "SAC" in alg.__name__:
-        warmup_transitions = 100
         tau = 0.005
         lr_alpha = 3e-4
         agent = alg(mdp.info, actor_params, actor_sigma_params,
@@ -83,7 +83,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
     else:
         agent = alg(mdp.info, policy_class, policy_params,
                 actor_params, actor_optimizer, critic_params, batch_size,
-                initial_replay_size, max_replay_size, tau)
+                initial_replay_size, max_replay_size, tau, warmup_transitions=warmup_transitions)
 
     # Algorithm
     core = Core(agent, mdp)
@@ -103,6 +103,8 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
         J = np.mean(compute_J(dataset, gamma))
         R = np.mean(compute_J(dataset))
         rewards.append(R)
+        if n % 50 == 0 :
+            agent.save_buffer_snapshot(epoch=n+1)
         logger.epoch_info(n+1, J=J, R=R)
 
     np.save( alg.__name__+".npy", np.asarray(rewards))

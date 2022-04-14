@@ -1,5 +1,6 @@
 from matplotlib.pyplot import axis
 import numpy as np
+from collections import deque
 
 from mushroom_rl.core import Serializable
 from mushroom_rl.utils.parameters import to_parameter
@@ -78,10 +79,14 @@ class UncertaintySumTree(object):
         """
         idx = self._retrieve(s, 0)
         data_idx = idx - self._max_size + 1
-        if self._data[data_idx] is None:
+        #if self._data[data_idx] is None:
+        #    data_idx -= 1
+        #    print(f"index exceed range")
+        try:
+            self._data[data_idx][6] += 1 # Update the num visits of the sampled state
+        except Exception as e:
             data_idx -= 1
-            print(f"index exceed range")
-        self._data[data_idx][6] += 1 # Update the num visits of the sampled state
+            print(e)
 
         return idx, self._tree[idx], self._data[data_idx]
 
@@ -122,6 +127,10 @@ class UncertaintySumTree(object):
             return self._retrieve(s, left)
         else:
             return self._retrieve(s - self._tree[left], right)
+
+    @property
+    def num_visits(self):
+        return[data[6] for data in self._data if data is not None]
 
     @property
     def size(self):
@@ -171,6 +180,7 @@ class UncertaintyReplayMemory(Serializable):
             epsilon (float, .01): small value to avoid zero probabilities.
 
         """
+        self._priorities = deque([], maxlen=max_size)
         self._initial_size = initial_size
         self._max_size = max_size
         self._alpha = alpha
@@ -202,7 +212,7 @@ class UncertaintyReplayMemory(Serializable):
         assert n_steps_return > 0
         #maximum priority for new samples
         p *= self.max_priority
-
+        [self._priorities.append(prio) for prio in p]
         self._tree.add(dataset, p, n_steps_return, gamma)
 
     def get(self, n_samples):
@@ -264,6 +274,7 @@ class UncertaintyReplayMemory(Serializable):
 
         """
         p = self._get_priority(critic_prediction, num_visits)
+        self._update_priorites(idx,p)
         self._tree.update(idx, p)
 
     def _get_priority(self, critic_prediction, num_visits):
@@ -273,11 +284,14 @@ class UncertaintyReplayMemory(Serializable):
         num_visits = num_visits + np.ones(shape=num_visits.shape)
         mean_scale = 1 - 1/num_visits
         priorities = mean_scale*mean/std + std/num_visits + self._epsilon
-        priorities_norm = priorities - self.max_priority
+        priorities_norm = np.clip(priorities, a_min=-5, a_max=5)
         priorities = np.exp(priorities_norm) ** 0.1
         priorities[priorities==np.inf] = self.max_priority
         return priorities
 
+    def _update_priorites(self, idx, p):
+        for i , index in enumerate(idx):
+            self._priorities[index-self._max_size] = p[i]
     @property
     def initialized(self):
         """
@@ -304,6 +318,10 @@ class UncertaintyReplayMemory(Serializable):
             The number of elements contained in the replay memory.
         """
         return self._tree.size
+
+    @property
+    def priorities(self):
+        return self._priorities
 
     def _post_load(self):
         if self._tree is None:

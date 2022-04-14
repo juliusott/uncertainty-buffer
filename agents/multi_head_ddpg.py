@@ -11,6 +11,7 @@ from buffer.uncertainty_buffer import UncertaintyReplayMemory
 from mushroom_rl.utils.parameters import Parameter, to_parameter
 from copy import deepcopy
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
 class MultiHeadDDPG(DeepAC):
     """
@@ -21,7 +22,7 @@ class MultiHeadDDPG(DeepAC):
     def __init__(self, mdp_info, policy_class, policy_params,
                  actor_params, actor_optimizer, critic_params, batch_size,
                  initial_replay_size, max_replay_size, tau, policy_delay=1,
-                 critic_fit_params=None, actor_predict_params=None, critic_predict_params=None):
+                 critic_fit_params=None, actor_predict_params=None, critic_predict_params=None, warmup_transitions=100):
         """
         Constructor.
         Args:
@@ -55,6 +56,7 @@ class MultiHeadDDPG(DeepAC):
         self._batch_size = to_parameter(batch_size)
         self._tau = to_parameter(tau)
         self._policy_delay = to_parameter(policy_delay)
+        self._warmup_transitions = to_parameter(warmup_transitions)
         self._fit_count = 0
 
         self._replay_memory = UncertaintyReplayMemory(initial_replay_size, max_replay_size, alpha=0.1, beta=0.9)
@@ -120,7 +122,7 @@ class MultiHeadDDPG(DeepAC):
             #print(f"td pred {td_pred[:, td_pred[0].nonzero()][0]} q {q[:, td_pred[0].nonzero()][0]}")
             td_error = np.squeeze(td_error)
             self._replay_memory.update(np.squeeze(critic_prediction), num_visits = num_visits ,idx=idx)
-            if self._fit_count % self._policy_delay() == 0:
+            if self._fit_count % self._policy_delay() == 0 and self._replay_memory.size > self._warmup_transitions():
                 loss = self._loss(state, num_visits)
                 self._optimize_actor_parameters(loss)
 
@@ -158,3 +160,10 @@ class MultiHeadDDPG(DeepAC):
     def _post_load(self):
         self._actor_approximator = self.policy._approximator
         self._update_optimizer_parameters(self._actor_approximator.model.network.parameters())
+
+    def save_buffer_snapshot(self, epoch):
+        priorities = self._replay_memory.priorities
+        fig, ax = plt.subplots(figsize=(10,7))
+        ax.bar(np.arange(len(priorities)), height=priorities)
+        fig.savefig(f"buffer_prios_epoch{epoch}.png")
+        plt.close()
