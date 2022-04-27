@@ -120,6 +120,7 @@ class MaskedTorchApproximator(Serializable):
                 val = tuple([x.detach().cpu().numpy() for x in val])
             else:
                 val = val.detach().cpu().numpy()
+            
 
         return val
 
@@ -241,6 +242,7 @@ class MaskedTorchApproximator(Serializable):
         return loss.item()
 
     def _compute_batch_loss(self, batch, num_visits, use_weights, kwargs):
+        num_visits[num_visits==0] = 1
         if use_weights:
             weights = torch.from_numpy(batch[-1]).type(torch.float)
             if self._use_cuda:
@@ -276,10 +278,13 @@ class MaskedTorchApproximator(Serializable):
         if not self.use_mask:
             loss = self._loss(y_hat, *y)
         else:
+            #print(f"num_vistis {num_visits}")
             loss = self._loss(y_hat, *y, reduction='none') / num_visits.unsqueeze(dim=1)
             loss = loss.mean(dim=0)
+            #print(f"loss {loss}")
             loss @= mask
-            loss = (loss / mask.sum()).sum()
+            #print(f"loss {loss} mask {mask}")
+            loss = loss / mask.sum()
 
         
         loss = loss

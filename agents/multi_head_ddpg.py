@@ -7,7 +7,7 @@ import torch
 from approximators.masked_torch_regressor import  MaskedTorchApproximator
 from mushroom_rl.approximators.parametric import TorchApproximator
 from mushroom_rl.utils.replay_memory import ReplayMemory, PrioritizedReplayMemory
-from buffer.uncertainty_buffer import UncertaintyReplayMemory
+from buffer.uncertainty_buffer import UncertaintyReplayMemory, AlternativeMEETReplayMemory
 from mushroom_rl.utils.parameters import Parameter, to_parameter
 from copy import deepcopy
 import torch.nn.functional as F
@@ -58,8 +58,9 @@ class MultiHeadDDPG(DeepAC):
         self._policy_delay = to_parameter(policy_delay)
         self._warmup_transitions = to_parameter(warmup_transitions)
         self._fit_count = 0
+        self._reward_scale = 3
 
-        self._replay_memory = UncertaintyReplayMemory(initial_replay_size, max_replay_size, alpha=0.1, beta=0.9)
+        self._replay_memory = AlternativeMEETReplayMemory(initial_replay_size, max_replay_size, alpha=0.1, beta=0.9)
 
         self.n_heads = critic_params["output_shape"][0]
         self.critic = critic_params["network"]
@@ -102,14 +103,14 @@ class MultiHeadDDPG(DeepAC):
         super().__init__(mdp_info, policy, actor_optimizer, policy_parameters)
 
     def fit(self, dataset):
-        self._replay_memory.add(dataset, p=np.ones(shape=(len(dataset,))))
+        self._replay_memory.add(dataset, priority=np.exp(5)*np.ones(shape=(len(dataset,))))
         if self._replay_memory.initialized:
-            state, action, reward, next_state, absorbing, _ , num_visits, idx, _=\
+            state, action, reward, next_state, absorbing, _ , num_visits, idx =\
                 self._replay_memory.get(self._batch_size())
 
             q_next = self._next_q(next_state, absorbing)
 
-            q = np.repeat(np.expand_dims(reward, axis=1),self.n_heads, axis=1) + self.mdp_info.gamma * q_next
+            q = self._reward_scale*np.repeat(np.expand_dims(reward, axis=1),self.n_heads, axis=1) + self.mdp_info.gamma * q_next
 
             self._critic_approximator.fit(state, action, q, num_visits=num_visits,
                                           **self._critic_fit_params)
@@ -161,9 +162,9 @@ class MultiHeadDDPG(DeepAC):
         self._actor_approximator = self.policy._approximator
         self._update_optimizer_parameters(self._actor_approximator.model.network.parameters())
 
-    def save_buffer_snapshot(self, epoch):
+    def save_buffer_snapshot(self,alg_name, epoch):
         priorities = self._replay_memory.priorities
         fig, ax = plt.subplots(figsize=(10,7))
         ax.bar(np.arange(len(priorities)), height=priorities)
-        fig.savefig(f"buffer_prios_epoch{epoch}.png")
+        fig.savefig(f"{alg_name}buffer_prios_epoch{epoch}.png")
         plt.close()

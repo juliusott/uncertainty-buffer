@@ -109,8 +109,11 @@ class MultiHeadCriticNetwork(nn.Module):
                                 gain=nn.init.calculate_gain('linear'))
 
     def update_heads_mask(self):
+        #self.heads_mask = torch.ones(self.n_heads)
+
         while self.heads_mask.sum() == 0:
             self.heads_mask = self.head_prob_dist.sample()
+
 
     def get_heads_mask(self):
         return self.heads_mask
@@ -119,15 +122,15 @@ class MultiHeadCriticNetwork(nn.Module):
         state_action = torch.cat((state.float(), action.float()), dim=1)
         features1 = F.relu(self._h1(state_action))
         features2 = F.relu(self._h2(features1))
-        q0 = self.head0(features2 + torch.randn_like(features2))
-        q1 = self.head1(features2 + torch.randn_like(features2))
-        q2 = self.head2(features2 + torch.randn_like(features2))
-        q3 = self.head3(features2 + torch.randn_like(features2))
-        q4 = self.head4(features2 + torch.randn_like(features2))
-        q5 = self.head5(features2 + torch.randn_like(features2))
-        q6 = self.head6(features2 + torch.randn_like(features2))
-        q7 = self.head7(features2 + torch.randn_like(features2))
-        q8 = self.head8(features2 + torch.randn_like(features2))
-        q9 = self.head9(features2 + torch.randn_like(features2))
+        q0 = self.head0(features2 + torch.randn_like(features2)*0.001)
+        q1 = self.head1(features2 + torch.randn_like(features2)*0.001)
+        q2 = self.head2(features2 + torch.randn_like(features2)*0.001)
+        q3 = self.head3(features2 + torch.randn_like(features2)*0.001)
+        q4 = self.head4(features2 + torch.randn_like(features2)*0.001)
+        q5 = self.head5(features2 + torch.randn_like(features2)*0.001)
+        q6 = self.head6(features2 + torch.randn_like(features2)*0.001)
+        q7 = self.head7(features2 + torch.randn_like(features2)*0.001)
+        q8 = self.head8(features2 + torch.randn_like(features2)*0.001)
+        q9 = self.head9(features2 + torch.randn_like(features2)*0.001)
         q = torch.cat((q0, q1, q2, q3, q4, q5, q6, q7 , q8, q9), dim=-1)
         return torch.squeeze(q)

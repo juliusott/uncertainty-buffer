@@ -8,7 +8,7 @@ from mushroom_rl.policy import Policy
 from mushroom_rl.approximators import Regressor
 from mushroom_rl.approximators.parametric import TorchApproximator
 from approximators.masked_torch_regressor import  MaskedTorchApproximator
-from buffer.uncertainty_buffer import UncertaintyReplayMemory
+from buffer.uncertainty_buffer import UncertaintyReplayMemory, AlternativeMEETReplayMemory
 from mushroom_rl.utils.torch import to_float_tensor
 from mushroom_rl.utils.parameters import to_parameter
 import matplotlib.pyplot as plt
@@ -61,13 +61,14 @@ class MultiHeadSAC(DeepAC):
         self._batch_size = to_parameter(batch_size)
         self._warmup_transitions = to_parameter(warmup_transitions)
         self._tau = to_parameter(tau)
+        self._reward_scale = 1
 
         if target_entropy is None:
             self._target_entropy = -np.prod(mdp_info.action_space.shape).astype(np.float32)
         else:
             self._target_entropy = target_entropy
 
-        self._replay_memory = UncertaintyReplayMemory(initial_replay_size, max_replay_size, alpha=1, beta=0.9)
+        self._replay_memory = AlternativeMEETReplayMemory(initial_replay_size, max_replay_size, alpha=1, beta=0.9)
         """
         if 'n_models' in critic_params.keys():
             assert critic_params['n_models'] == 2
@@ -123,25 +124,23 @@ class MultiHeadSAC(DeepAC):
         super().__init__(mdp_info, policy, actor_optimizer, policy_parameters)
 
     def fit(self, dataset):
-        self._replay_memory.add(dataset, p=np.ones(shape=(len(dataset,))))
+        self._replay_memory.add(dataset, priority=np.ones(shape=(len(dataset,))))
         if self._replay_memory.initialized:
-            state, action, reward, next_state, absorbing, _ , num_visits, idx, _=\
+            state, action, reward, next_state, absorbing, _ , num_visits, idx =\
                 self._replay_memory.get(self._batch_size())
 
             if self._replay_memory.size > self._warmup_transitions():
                 action_new, log_prob = self.policy.compute_action_and_log_prob_t(state)
-                loss = self._loss(state, action_new, log_prob)
+                loss = self._loss(state, action_new, log_prob, num_visits)
                 self._optimize_actor_parameters(loss)
                 self._update_alpha(log_prob.detach())
 
             q_next = self._next_q(next_state, absorbing)
-            q = np.repeat(np.expand_dims(reward, axis=1),q_next.shape[-1], axis=1) + self.mdp_info.gamma * q_next
-
+            q = self._reward_scale * np.repeat(np.expand_dims(reward, axis=1),q_next.shape[-1], axis=1) + self.mdp_info.gamma * q_next
             self._critic_approximator.fit(state, action, q, num_visits=num_visits,
                                           **self._critic_fit_params)
 
             td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
-            #print(f"td pred {td_pred[0]} q {q[0]}")
             critic_prediction = td_pred[:, td_pred[0].nonzero()]
 
             self._replay_memory.update(np.squeeze(critic_prediction), num_visits = num_visits ,idx=idx)
@@ -149,11 +148,11 @@ class MultiHeadSAC(DeepAC):
             self._update_target(self._critic_approximator,
                                 self._target_critic_approximator)
 
-    def _loss(self, state, action_new, log_prob):
+    def _loss(self, state, action_new, log_prob, num_visits):
         q = self._critic_approximator(state, action_new,
                                         output_tensor=True)
 
-        q = torch.min(q, dim=1).values
+        q = torch.mean(q, dim=1) #+ torch.max(q, dim=1).values * torch.sqrt(torch.from_numpy(num_visits).cuda())
 
         return (self._alpha * log_prob - q).mean()
 
@@ -183,11 +182,11 @@ class MultiHeadSAC(DeepAC):
 
         return q
 
-    def save_buffer_snapshot(self, epoch):
+    def save_buffer_snapshot(self,alg_name, epoch):
         priorities = self._replay_memory.priorities
         fig, ax = plt.subplots(figsize=(10,7))
         ax.bar(np.arange(len(priorities)), height=priorities)
-        fig.savefig(f"buffer_prios_epoch{epoch}.png")
+        fig.savefig(f"{alg_name}buffer_prios_epoch{epoch}.png")
         plt.close()
 
     def _post_load(self):

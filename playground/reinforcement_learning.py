@@ -15,6 +15,7 @@ from mushroom_rl.utils.dataset import compute_J
 from tqdm import trange
 import time
 import sys
+import os
 
 from networks.networks import CriticNetwork, ActorNetwork
 
@@ -38,10 +39,10 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
     policy_params = dict(sigma=np.ones(1) * .2, theta=.15, dt=1e-2)
 
     # Settings
-    initial_replay_size = 500
-    max_replay_size = 5000
-    batch_size = 200
-    n_features = 64
+    initial_replay_size = 550
+    max_replay_size = 100000
+    batch_size = 512
+    n_features = 256
     tau = .001
 
     # Approximator
@@ -107,8 +108,12 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
         rewards.append(R)
 
         logger.epoch_info(n+1, J=J, R=R)
-
-    np.save( alg.__name__+".npy", np.asarray(rewards))
+    filename = alg.__name__+".npy"
+    k= 1
+    while os.path.isfile(filename):
+        filename = f"{alg.__name__}{k}.npy"
+        k +=1 
+    np.save(filename, np.asarray(rewards))
 
     #logger.info('Press a button to visualize pendulum')
     #input()
@@ -116,7 +121,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
 
 
 if __name__ == '__main__':
-    algs = [SAC, DDPG, TD3]
+    algs = [DDPG, TD3, SAC]
 
     for alg in algs:
-        experiment(alg=alg, n_epochs=4000, n_steps=1000, n_steps_test=2000)
+        experiment(alg=alg, n_epochs=1000, n_steps=1000, n_steps_test=2000)
