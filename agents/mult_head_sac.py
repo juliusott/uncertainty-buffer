@@ -8,7 +8,9 @@ from mushroom_rl.policy import Policy
 from mushroom_rl.approximators import Regressor
 from mushroom_rl.approximators.parametric import TorchApproximator
 from approximators.masked_torch_regressor import  MaskedTorchApproximator
-from buffer.uncertainty_buffer import UncertaintyReplayMemory, AlternativeMEETReplayMemory
+from buffer.uncertainty_buffer import UncertaintyReplayMemory
+from buffer.prioritized_buffer import PrioritizedReplayMemory
+from mushroom_rl.utils.replay_memory import ReplayMemory
 from mushroom_rl.utils.torch import to_float_tensor
 from mushroom_rl.utils.parameters import to_parameter
 import matplotlib.pyplot as plt
@@ -28,7 +30,7 @@ class MultiHeadSAC(DeepAC):
                  actor_optimizer, critic_params, batch_size,
                  initial_replay_size, max_replay_size, warmup_transitions= 100, tau=0.005,
                  lr_alpha=3e-4, log_std_min=-20, log_std_max=2, target_entropy=None,
-                 critic_fit_params=None):
+                 critic_fit_params=None, buffer_strategy="uniform"):
         """
         Constructor.
         Args:
@@ -55,6 +57,7 @@ class MultiHeadSAC(DeepAC):
                 None a default value is computed ;
             critic_fit_params (dict, None): parameters of the fitting algorithm
                 of the critic approximator.
+            buffer_strategy (string): Buffer sampling strategy. One of [uniform, prioritzed, uncertainty]
         """
         self._critic_fit_params = dict() if critic_fit_params is None else critic_fit_params
 
@@ -62,13 +65,20 @@ class MultiHeadSAC(DeepAC):
         self._warmup_transitions = to_parameter(warmup_transitions)
         self._tau = to_parameter(tau)
         self._reward_scale = 1
+        self._buffer_strategy = buffer_strategy
 
         if target_entropy is None:
             self._target_entropy = -np.prod(mdp_info.action_space.shape).astype(np.float32)
         else:
             self._target_entropy = target_entropy
+        if self._buffer_strategy == "uniform":
+            self._replay_memory = ReplayMemory(initial_replay_size, max_replay_size)
 
-        self._replay_memory = AlternativeMEETReplayMemory(initial_replay_size, max_replay_size, alpha=1, beta=0.9)
+        elif self._buffer_strategy == "prioritized":
+            self._replay_memory = PrioritizedReplayMemory(initial_replay_size, max_replay_size, alpha=1, beta=0.9)
+        
+        else:
+            self._replay_memory = UncertaintyReplayMemory(initial_replay_size, max_replay_size, alpha=1, beta=0.9)
         """
         if 'n_models' in critic_params.keys():
             assert critic_params['n_models'] == 2
@@ -124,10 +134,26 @@ class MultiHeadSAC(DeepAC):
         super().__init__(mdp_info, policy, actor_optimizer, policy_parameters)
 
     def fit(self, dataset):
-        self._replay_memory.add(dataset, priority=np.ones(shape=(len(dataset,))))
+        if self._buffer_strategy == "uniform":
+            self._replay_memory.add(dataset)
+        elif self._buffer_strategy in ["prioritized", "uncertainty"]:
+            self._replay_memory.add(dataset, p=np.ones(shape=(len(dataset,))))
+        else:
+            raise NotImplementedError("Unknown Sampling Strategy Choose one of [uniform, prioritized, uncertainty]")
         if self._replay_memory.initialized:
-            state, action, reward, next_state, absorbing, _ , num_visits, idx =\
-                self._replay_memory.get(self._batch_size())
+            if self._buffer_strategy == "uniform":
+                state, action, reward, next_state, absorbing, _ = \
+                                                            self._replay_memory.get(self._batch_size())
+                # no loss correction
+                num_visits = np.ones(shape=(self._batch_size(), 1))
+            elif self._buffer_strategy == "uncertainty":
+                state, action, reward, next_state, absorbing, _ , num_visits, idx =\
+                                                            self._replay_memory.get(self._batch_size())
+            else:
+                state, action, reward, next_state, absorbing, _, idx, is_weight = \
+                                                            self._replay_memory.get(self._batch_size())
+                # importance sampling loss correction
+                num_visits = is_weight
 
             if self._replay_memory.size > self._warmup_transitions():
                 action_new, log_prob = self.policy.compute_action_and_log_prob_t(state)
@@ -136,14 +162,24 @@ class MultiHeadSAC(DeepAC):
                 self._update_alpha(log_prob.detach())
 
             q_next = self._next_q(next_state, absorbing)
+
             q = self._reward_scale * np.repeat(np.expand_dims(reward, axis=1),q_next.shape[-1], axis=1) + self.mdp_info.gamma * q_next
+
             self._critic_approximator.fit(state, action, q, num_visits=num_visits,
                                           **self._critic_fit_params)
 
-            td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
-            critic_prediction = td_pred[:, td_pred[0].nonzero()]
+            if self._buffer_strategy == "uncertainty":
+                td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
+                critic_prediction = td_pred[:, td_pred[0].nonzero()]
+                self._replay_memory.update(np.squeeze(critic_prediction), num_visits = num_visits ,idx=idx)
+            elif self._buffer_strategy == "prioritized":
+                td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
+                # choose the sampled heads only
+                critic_prediction = np.squeeze(td_pred[:, td_pred[0].nonzero()])
+                q_heads = np.squeeze(q[:, td_pred[0].nonzero()])
+                td_error = np.mean(np.square(critic_prediction - q_heads), axis=1)
 
-            self._replay_memory.update(np.squeeze(critic_prediction), num_visits = num_visits ,idx=idx)
+                self._replay_memory.update(np.squeeze(td_error), idx=idx)
 
             self._update_target(self._critic_approximator,
                                 self._target_critic_approximator)

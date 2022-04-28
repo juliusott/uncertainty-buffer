@@ -1,4 +1,6 @@
+from re import A
 import numpy as np
+import argparse
 
 import torch
 import torch.nn as nn
@@ -19,7 +21,7 @@ import os
 from networks.networks import MultiHeadCriticNetwork, ActorNetwork
 
 
-def experiment(alg, n_epochs, n_steps, n_steps_test):
+def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy):
     #np.random.seed()
 
     logger = Logger(alg.__name__, results_dir=None)
@@ -29,9 +31,10 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
     use_cuda = torch.cuda.is_available()
 
     # MDP
-    horizon = 50
+    horizon = 100
     gamma = 0.99
-    mdp = Gym('Humanoid-v3', horizon, gamma)
+    env_name = 'Humanoid-v3'
+    mdp = Gym(env_name, horizon, gamma)
 
     # Policy
     policy_class = OrnsteinUhlenbeckPolicy
@@ -80,11 +83,12 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
         agent = alg(mdp.info, actor_params, actor_sigma_params,
                 actor_optimizer, critic_params, batch_size, initial_replay_size,
                 max_replay_size, warmup_transitions, tau, lr_alpha,
-                critic_fit_params=None)
+                critic_fit_params=None, buffer_strategy=buffer_strategy)
     else:
         agent = alg(mdp.info, policy_class, policy_params,
                 actor_params, actor_optimizer, critic_params, batch_size,
-                initial_replay_size, max_replay_size, tau, warmup_transitions=warmup_transitions)
+                initial_replay_size, max_replay_size, tau, warmup_transitions=warmup_transitions, 
+                buffer_strategy=buffer_strategy)
 
     # Algorithm
     core = Core(agent, mdp)
@@ -101,7 +105,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
     filename = alg.__name__+".npy"
     k= 1
     while os.path.isfile(filename):
-        filename = f"{alg.__name__}{k}std_div_mean.npy"
+        filename = f"{alg.__name__}{k}{env_name}.npy"
         k +=1 
     print(f"save file {filename}")
     for n in trange(n_epochs, leave=False):
@@ -112,16 +116,32 @@ def experiment(alg, n_epochs, n_steps, n_steps_test):
         rewards.append(R)
         if n % 100 == 0 :
             #agent.save_buffer_snapshot(alg_name=alg.__name__,  epoch=n+1)
-            np.save(filename, np.asarray(rewards))
+            np.save(filename, np.array(rewards))
         logger.epoch_info(n+1, J=J, R=R)
-    np.save(filename, np.asarray(rewards))
+    np.save(filename, np.array(rewards))
     #logger.info('Press a button to visualize pendulum')
     #input()
     #core.evaluate(n_episodes=5, render=True)
 
 
 if __name__ == '__main__':
-    algs = [MultiHeadTD3, MultiHeadTD3, MultiHeadTD3]
+    parser = argparse.ArgumentParser(description='define experimental setup')
+    parser.add_argument('--buffer', help='buffer sampling strategy [uniform, uncertainty, prioritized]', type=str, default="uniform")
+    parser.add_argument('--alg', help='choose algorithm [SAC, DDPG, TD3]', type=str, default="SAC")
+    parser.add_argument('--n_epochs', help='number of epochs per iteration', type=int, default=1000)
+    parser.add_argument('--n_experiments', help='number of experiments ', type=int, default=1)
+    args = parser.parse_args()
+    
+    buffer_strategy = args.buffer
+    algorithm = args.alg
+    n_epochs = int(args.n_epochs)
+    n_experiments = int(args.n_experiments)
+    if algorithm == "SAC":
+        alg = MultiHeadSAC
+    elif algorithm == "TD3":
+        alg = MultiHeadTD3
+    else:
+        alg = MultiHeadDDPG
 
-    for alg in algs:
-        experiment(alg=alg, n_epochs=200, n_steps=1000, n_steps_test=1000)
+    for _ in range(n_experiments):
+        experiment(alg=alg, n_epochs=n_epochs, n_steps=1000, n_steps_test=1000, buffer_strategy=buffer_strategy)

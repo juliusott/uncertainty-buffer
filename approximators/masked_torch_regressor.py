@@ -278,10 +278,12 @@ class MaskedTorchApproximator(Serializable):
         if not self.use_mask:
             loss = self._loss(y_hat, *y)
         else:
-            #print(f"num_vistis {num_visits}")
-            loss = self._loss(y_hat, *y, reduction='none') / num_visits.unsqueeze(dim=1)
+            #print(f"num_vistis {num_visits.shape}")
+            #print(f"y and yhat {y_hat.shape}")
+            loss = self._loss(y_hat, *y, reduction='none') #/ num_visits.unsqueeze(dim=1)
+            #print(f"loss shpae {loss.shape}")
             loss = loss.mean(dim=0)
-            #print(f"loss {loss}")
+            #print(f"loss {loss} {loss.shape} mask {mask.shape}")
             loss @= mask
             #print(f"loss {loss} mask {mask}")
             loss = loss / mask.sum()

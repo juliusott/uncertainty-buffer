@@ -1,3 +1,5 @@
+from asyncio.log import logger
+import sys
 from matplotlib.pyplot import axis
 import numpy as np
 from collections import deque, namedtuple
@@ -36,13 +38,11 @@ class UncertaintySumTree(object):
     def add(self, dataset, priority, n_steps_return, gamma):
         """
         Add elements to the tree.
-
         Args:
             dataset (list): list of elements to add to the tree;
             priority (np.ndarray): priority of each sample in the dataset;
             n_steps_return (int): number of steps to consider for computing n-step return;
             gamma (float): discount factor for n-step return.
-
         """
         i = 0
         while i < len(dataset) - n_steps_return + 1:
@@ -61,7 +61,7 @@ class UncertaintySumTree(object):
                 d[3] = dataset[i + j][3]
                 d[4] = dataset[i + j][4]
                 d[5] = dataset[i + j][5]
-                d.append(0) # add num visits here
+                d.append(0)
                 idx = self._idx + self._max_size - 1
 
                 self._data[self._idx] = d
@@ -87,14 +87,7 @@ class UncertaintySumTree(object):
         """
         idx = self._retrieve(s, 0)
         data_idx = idx - self._max_size + 1
-        #if self._data[data_idx] is None:
-        #    data_idx -= 1
-        #    print(f"index exceed range")
-        try:
-            self._data[data_idx][6] += 1 # Update the num visits of the sampled state
-        except Exception as e:
-            data_idx -= 1
-            print(e)
+        self._data[data_idx][6] += 1 # Update the num visits of the sampled state
 
         return idx, self._tree[idx], self._data[data_idx]
 
@@ -135,10 +128,6 @@ class UncertaintySumTree(object):
             return self._retrieve(s, left)
         else:
             return self._retrieve(s - self._tree[left], right)
-
-    @property
-    def num_visits(self):
-        return[data[6] for data in self._data if data is not None]
 
     @property
     def size(self):
@@ -191,9 +180,17 @@ class UncertaintyReplayMemory(Serializable):
         self._priorities = deque([], maxlen=max_size)
         self._initial_size = initial_size
         self._max_size = max_size
+        self._max_mean_track = [1,0]
+        self._min_mean_track = [0,0]
+        self._max_std_track = [1,0]
+        self._initial_size = initial_size
+        self._max_size = max_size
         self._alpha = alpha
         self._beta = to_parameter(beta)
         self._epsilon = epsilon
+        self._max_variance = 1
+        self._max_mean = 1
+        self._max_priority = 1
 
         self._tree = UncertaintySumTree(max_size)
 
@@ -203,7 +200,8 @@ class UncertaintyReplayMemory(Serializable):
             _alpha='primitive',
             _beta='primitive',
             _epsilon='primitive',
-            _tree='pickle!'
+            _tree='pickle!',
+            _priorities='pickle!'
         )
 
     def add(self, dataset, p, n_steps_return=1, gamma=1.):
@@ -220,7 +218,8 @@ class UncertaintyReplayMemory(Serializable):
         assert n_steps_return > 0
         #maximum priority for new samples
         p *= self.max_priority
-        [self._priorities.append(prio) for prio in p]
+        for prio in p:
+            self._priorities.append(prio) 
         self._tree.add(dataset, p, n_steps_return, gamma)
 
     def get(self, n_samples):
@@ -252,10 +251,10 @@ class UncertaintyReplayMemory(Serializable):
         b = np.arange(1, n_samples + 1) * segment
         if a.any() == np.nan or b.any() == np.nan:
             print(f"a {a}, b {b}")
+
         samples = np.random.uniform(a, b)
         for i, s in enumerate(samples):
             idx, p, data = self._tree.get(s)
-
             idxs[i] = idx
             priorities[i] = p
             states[i], actions[i], rewards[i], next_states[i], absorbing[i],\
@@ -264,12 +263,10 @@ class UncertaintyReplayMemory(Serializable):
             next_states[i] = np.array(next_states[i])
 
         sampling_probabilities = priorities / self._tree.total_p
-        is_weight = sampling_probabilities
-        # is_weight /= is_weight.max()
 
         return np.array(states), np.array(actions), np.array(rewards),\
             np.array(next_states), np.array(absorbing), np.array(last),\
-            np.array(num_visits),idxs, is_weight
+            np.array(num_visits),idxs
 
     def update(self, critic_prediction, num_visits , idx):
         """
@@ -281,22 +278,38 @@ class UncertaintyReplayMemory(Serializable):
             idx (np.ndarray): indexes of the transitions in the dataset.
 
         """
-        p = self._get_priority(critic_prediction, num_visits)
+        p = self._get_priority(critic_prediction, num_visits, idx)
         self._update_priorites(idx,p)
         self._tree.update(idx, p)
 
-    def _get_priority(self, critic_prediction, num_visits):
-        mean = np.mean(critic_prediction, axis=-1) 
+    def _get_priority(self, critic_prediction, num_visits, idx):
+        mean = np.mean(critic_prediction, axis=-1)
         std = np.std(critic_prediction, axis=-1)
-        #print(f"mean {mean} std {std}")
-        num_visits = num_visits + np.ones(shape=num_visits.shape)
-        mean_scale = 1 - 1/num_visits
-        priorities = mean_scale*mean/std + std/num_visits + self._epsilon
-        priorities_norm = np.clip(priorities, a_min=-5, a_max=3)
-        priorities = np.exp(priorities_norm) 
-        priorities[priorities==np.inf] = self.max_priority
-        priorities[priorities==np.nan] = 0
-        return priorities
+        min_mean = np.amin(mean)
+        if self._min_mean_track[0] > min_mean or self._min_mean_track[1] in idx:
+            self._min_mean_track[0] = min_mean 
+            self._min_mean_track[1] = idx[np.argmin(mean)]
+        
+        mean += np.abs(self._min_mean_track[0])
+        max_mean = np.amax(mean)
+        max_std = np.amax(std)
+        #keep track of max values for normalisation
+        if self._max_mean_track[0] < max_mean or self._max_mean_track[1] in idx:
+            self._max_mean_track[0] = max_mean 
+            self._max_mean_track[1] = idx[np.argmax(mean)]
+        
+        if self._max_std_track[0] < max_std or self._max_std_track[1] in idx:
+            self._max_std_track[0] = max_std
+            self._max_std_track[1] = idx[np.argmax(std)]
+
+        # Normalize mean and variance
+        mean /= self.max_mean
+        std /= self.max_variance
+        # sanity check if num visits is not updated
+        num_visits[num_visits==0] = 1
+        beta = 1 - 1/num_visits  
+        priorities = std/num_visits + beta *std *mean
+        return priorities 
 
     def _update_priorites(self, idx, p):
         for i , index in enumerate(idx):
@@ -319,6 +332,14 @@ class UncertaintyReplayMemory(Serializable):
 
         """
         return self._tree.max_p if self.initialized else 1.
+
+    @property
+    def max_variance(self):
+        return self._max_std_track[0]
+
+    @property
+    def max_mean(self):
+        return self._max_mean_track[0]
     
     @property
     def size(self):
@@ -359,11 +380,16 @@ class AlternativeMEETReplayMemory(Serializable):
         """
         self._priorities = deque([], maxlen=max_size)
         self._buffer = deque([], maxlen=max_size)
+        self._mean_track = [0,0]
+        self._std_track = [0,0]
         self._initial_size = initial_size
         self._max_size = max_size
         self._alpha = alpha
         self._beta = to_parameter(beta)
         self._epsilon = epsilon
+        self._max_variance = 1
+        self._max_mean = 1
+        self._max_priority = 1
 
     def add(self, dataset, priority, n_steps_return=1, gamma=0.99):
         """
@@ -428,7 +454,7 @@ class AlternativeMEETReplayMemory(Serializable):
         num_visits = [None for _ in range(n_samples)]
 
         idxs = [None for _ in range(n_samples)]
-        priorities = stable_softmax(self._priorities)
+        priorities = stable_softmax(np.array(self.priorities))
 
         
 
@@ -455,29 +481,37 @@ class AlternativeMEETReplayMemory(Serializable):
             idx (np.ndarray): indexes of the transitions in the dataset.
 
         """
-        p = self._get_priority(critic_prediction, num_visits)
-        self._update_priorities(idx,p)
+        p = self._get_priority(critic_prediction, num_visits, idx)
+        self._update_priorities(idx, p)
 
     def _update_priorities(self, idx, p):
         for i, index in enumerate(idx):
             self._priorities[index] = p[i]
             
 
-    def _get_priority(self, critic_prediction, num_visits):
+    def _get_priority(self, critic_prediction, num_visits, idx):
         mean = np.mean(critic_prediction, axis=-1) 
-        std = np.std(critic_prediction, axis=-1) + 1e-8
+        std = np.std(critic_prediction, axis=-1)
+
+        max_mean = np.amax(mean)
+        max_std = np.amax(std)
+        #keep track of max values for normalisation
+        if self._mean_track[0] < max_mean or self._mean_track[1] in idx:
+            self._mean_track[0] = max_mean 
+            self._mean_track[1] = idx[np.argmax(mean)]
+        
+        if self._std_track[0] < max_std or self._std_track[1] in idx:
+            self._std_track[0] = max_std
+            self._std_track[1] = idx[np.argmax(std)]
+
+        # Normalize mean and variance
+        mean /= self.max_mean
+        std /= self.max_variance
+        # sanity check if num visits is not updated
         num_visits[num_visits==0] = 1
-        #mean = np.clip(mean, a_min=-10000, a_max=100000)
-        #std = np.clip(std, a_min=-10000, a_max=100000)
-        mean_scale = 1 - 1/num_visits + 1e-6
-        #mean_scale*mean/std + 
-        priorities = std/num_visits + mean_scale*std/mean
-        #priorities_norm = np.clip(priorities, a_min=-10, a_max=5)
-        #priorities = np.exp(priorities_norm) 
-        #priorities[priorities==np.inf] = self.max_priority
-        priorities[priorities==np.nan] = self.max_priority
-        #print(f"prios {priorities}")
-        return priorities / self.max_priority
+        beta = 1 - 1/num_visits  
+        priorities = std/num_visits + beta *std *mean
+        return priorities 
 
     @property
     def initialized(self):
@@ -496,7 +530,16 @@ class AlternativeMEETReplayMemory(Serializable):
             The maximum value of priority inside the replay memory.
 
         """
-        return np.amax(self._priorities) if self.initialized else 1
+        return self._max_priority
+
+    @property
+    def max_variance(self):
+        return self._std_track[0]
+
+    @property
+    def max_mean(self):
+        return self._mean_track[0]
+
     
     @property
     def size(self):

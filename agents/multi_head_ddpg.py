@@ -22,7 +22,8 @@ class MultiHeadDDPG(DeepAC):
     def __init__(self, mdp_info, policy_class, policy_params,
                  actor_params, actor_optimizer, critic_params, batch_size,
                  initial_replay_size, max_replay_size, tau, policy_delay=1,
-                 critic_fit_params=None, actor_predict_params=None, critic_predict_params=None, warmup_transitions=100):
+                 critic_fit_params=None, actor_predict_params=None, critic_predict_params=None, warmup_transitions=100,
+                 buffer_strategy="uniform"):
         """
         Constructor.
         Args:
@@ -60,7 +61,7 @@ class MultiHeadDDPG(DeepAC):
         self._fit_count = 0
         self._reward_scale = 3
 
-        self._replay_memory = AlternativeMEETReplayMemory(initial_replay_size, max_replay_size, alpha=0.1, beta=0.9)
+        self._replay_memory = UncertaintyReplayMemory(initial_replay_size, max_replay_size, alpha=0.1, beta=0.9)
 
         self.n_heads = critic_params["output_shape"][0]
         self.critic = critic_params["network"]
@@ -103,9 +104,9 @@ class MultiHeadDDPG(DeepAC):
         super().__init__(mdp_info, policy, actor_optimizer, policy_parameters)
 
     def fit(self, dataset):
-        self._replay_memory.add(dataset, priority=np.exp(5)*np.ones(shape=(len(dataset,))))
+        self._replay_memory.add(dataset, p=np.exp(5)*np.ones(shape=(len(dataset,))))
         if self._replay_memory.initialized:
-            state, action, reward, next_state, absorbing, _ , num_visits, idx =\
+            state, action, reward, next_state, absorbing, _ , num_visits, idx, _ =\
                 self._replay_memory.get(self._batch_size())
 
             q_next = self._next_q(next_state, absorbing)
