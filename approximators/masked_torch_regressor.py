@@ -46,7 +46,7 @@ class MaskedTorchApproximator(Serializable):
         self._reinitialize = reinitialize
         self._use_cuda = use_cuda
         self._dropout = dropout
-        self._quiet = quiet
+        self._quiet = True
         self._n_fit_targets = n_fit_targets
         self.use_mask = use_mask
 

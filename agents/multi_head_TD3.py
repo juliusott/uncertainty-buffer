@@ -68,7 +68,7 @@ class MultiHeadTD3(MultiHeadDDPG):
         action = self._actor_approximator(state, output_tensor=True, **self._actor_predict_params)
         q = self._critic_approximator(state, action, output_tensor=True, **self._critic_predict_params) / torch.from_numpy(np.expand_dims(num_visits, axis=1)).cuda()
 
-        return -torch.max(q, dim=1).values.mean()
+        return -torch.min(q, dim=1).values.mean()
 
     def _next_q(self, next_state, absorbing):
         """
@@ -91,7 +91,6 @@ class MultiHeadTD3(MultiHeadDDPG):
 
         q = self._target_critic_approximator.predict(next_state, a_smoothed, **self._critic_predict_params)
         
-        #q = q.min(axis=1)
         q *= np.ones(q.shape) -  np.repeat(np.expand_dims(absorbing, axis=1), self.n_heads, axis=1)
 
         return q

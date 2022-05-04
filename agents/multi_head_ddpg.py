@@ -169,7 +169,7 @@ class MultiHeadDDPG(DeepAC):
     def _loss(self, state, num_visits):
         action = self._actor_approximator(state, output_tensor=True, **self._actor_predict_params)
         q = self._critic_approximator(state, action, output_tensor=True, **self._critic_predict_params) / torch.from_numpy(np.expand_dims(num_visits, axis=1)).cuda()
-
+        q = q.min(axis=1).values
         return -q.mean()
 
     def _next_q(self, next_state, absorbing):
