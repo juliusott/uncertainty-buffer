@@ -59,9 +59,17 @@ class MultiHeadDDPG(DeepAC):
         self._policy_delay = to_parameter(policy_delay)
         self._warmup_transitions = to_parameter(warmup_transitions)
         self._fit_count = 0
-        self._reward_scale = 3
+        self._reward_scale = 1
+        self._buffer_strategy = buffer_strategy
 
-        self._replay_memory = UncertaintyReplayMemory(initial_replay_size, max_replay_size, alpha=0.1, beta=0.9)
+        if self._buffer_strategy == "uniform":
+            self._replay_memory = ReplayMemory(initial_replay_size, max_replay_size)
+
+        elif self._buffer_strategy == "prioritized":
+            self._replay_memory = PrioritizedReplayMemory(initial_replay_size, max_replay_size, alpha=1, beta=0.9)
+        
+        else:
+            self._replay_memory = UncertaintyReplayMemory(initial_replay_size, max_replay_size, alpha=1, beta=0.9)
 
         self.n_heads = critic_params["output_shape"][0]
         self.critic = critic_params["network"]
@@ -104,10 +112,26 @@ class MultiHeadDDPG(DeepAC):
         super().__init__(mdp_info, policy, actor_optimizer, policy_parameters)
 
     def fit(self, dataset):
-        self._replay_memory.add(dataset, p=np.exp(5)*np.ones(shape=(len(dataset,))))
+        if self._buffer_strategy == "uniform":
+            self._replay_memory.add(dataset)
+        elif self._buffer_strategy in ["prioritized", "uncertainty"]:
+            self._replay_memory.add(dataset, p=np.ones(shape=(len(dataset,))))
+        else:
+            raise NotImplementedError("Unknown Sampling Strategy Choose one of [uniform, prioritized, uncertainty]")
         if self._replay_memory.initialized:
-            state, action, reward, next_state, absorbing, _ , num_visits, idx, _ =\
-                self._replay_memory.get(self._batch_size())
+            if self._buffer_strategy == "uniform" :
+                state, action, reward, next_state, absorbing, _ = \
+                                                            self._replay_memory.get(self._batch_size())
+                # no loss correction
+                num_visits = np.ones(shape=(self._batch_size(), 1))
+            elif self._buffer_strategy == "uncertainty" :
+                state, action, reward, next_state, absorbing, _ , num_visits, idx =\
+                                                            self._replay_memory.get(self._batch_size())
+            else:
+                state, action, reward, next_state, absorbing, _, idx, is_weight = \
+                                                            self._replay_memory.get(self._batch_size())
+                # importance sampling loss correction
+                num_visits = 1/is_weight
 
             q_next = self._next_q(next_state, absorbing)
 
@@ -117,14 +141,21 @@ class MultiHeadDDPG(DeepAC):
                                           **self._critic_fit_params)
 
             td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
-            #print(f"td pred {td_pred[0]} q {q[0]}")
-            critic_prediction = td_pred[:, td_pred[0].nonzero()]
 
-            td_error = td_pred[:, td_pred[0].nonzero()] - q[:, td_pred[0].nonzero()]
-            #print(f"td pred {td_pred[:, td_pred[0].nonzero()][0]} q {q[:, td_pred[0].nonzero()][0]}")
-            td_error = np.squeeze(td_error)
-            self._replay_memory.update(np.squeeze(critic_prediction), num_visits = num_visits ,idx=idx)
-            if self._fit_count % self._policy_delay() == 0 and self._replay_memory.size > self._warmup_transitions():
+            if self._buffer_strategy == "uncertainty":
+                td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
+                critic_prediction = td_pred[:, td_pred[0].nonzero()]
+                self._replay_memory.update(np.squeeze(critic_prediction), num_visits = num_visits ,idx=idx)
+            elif self._buffer_strategy == "prioritized":
+                td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
+                # choose the sampled heads only
+                critic_prediction = np.squeeze(td_pred[:, td_pred[0].nonzero()])
+                q_heads = np.squeeze(q[:, td_pred[0].nonzero()])
+                td_error = np.mean(np.square(critic_prediction - q_heads), axis=1)
+
+                self._replay_memory.update(np.squeeze(td_error), idx=idx)
+
+            if self._fit_count % self._policy_delay() == 0:
                 loss = self._loss(state, num_visits)
                 self._optimize_actor_parameters(loss)
 

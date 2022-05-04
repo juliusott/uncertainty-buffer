@@ -10,7 +10,7 @@ from mushroom_rl.approximators.parametric import TorchApproximator
 from approximators.masked_torch_regressor import  MaskedTorchApproximator
 from buffer.uncertainty_buffer import UncertaintyReplayMemory
 from buffer.prioritized_buffer import PrioritizedReplayMemory
-from mushroom_rl.utils.replay_memory import ReplayMemory
+from mushroom_rl.utils.replay_memory import ReplayMemory #, PrioritizedReplayMemory
 from mushroom_rl.utils.torch import to_float_tensor
 from mushroom_rl.utils.parameters import to_parameter
 import matplotlib.pyplot as plt
@@ -30,7 +30,7 @@ class MultiHeadSAC(DeepAC):
                  actor_optimizer, critic_params, batch_size,
                  initial_replay_size, max_replay_size, warmup_transitions= 100, tau=0.005,
                  lr_alpha=3e-4, log_std_min=-20, log_std_max=2, target_entropy=None,
-                 critic_fit_params=None, buffer_strategy="uniform"):
+                 critic_fit_params=None, buffer_strategy="uniform", buffer_alpha=None, buffer_beta=None):
         """
         Constructor.
         Args:
@@ -66,6 +66,8 @@ class MultiHeadSAC(DeepAC):
         self._tau = to_parameter(tau)
         self._reward_scale = 1
         self._buffer_strategy = buffer_strategy
+        self._buffer_alpha = 1 if buffer_alpha is None else 1.0
+        self._buffer_beta = 0.9 if buffer_beta is None else 0.9
 
         if target_entropy is None:
             self._target_entropy = -np.prod(mdp_info.action_space.shape).astype(np.float32)
@@ -75,10 +77,10 @@ class MultiHeadSAC(DeepAC):
             self._replay_memory = ReplayMemory(initial_replay_size, max_replay_size)
 
         elif self._buffer_strategy == "prioritized":
-            self._replay_memory = PrioritizedReplayMemory(initial_replay_size, max_replay_size, alpha=1, beta=0.9)
+            self._replay_memory = PrioritizedReplayMemory(initial_replay_size, max_replay_size, alpha=self._buffer_alpha, beta=self._buffer_beta)
         
         else:
-            self._replay_memory = UncertaintyReplayMemory(initial_replay_size, max_replay_size, alpha=1, beta=0.9)
+            self._replay_memory = UncertaintyReplayMemory(initial_replay_size, max_replay_size, alpha=self._buffer_alpha, beta=self._buffer_beta)
         """
         if 'n_models' in critic_params.keys():
             assert critic_params['n_models'] == 2
@@ -153,7 +155,8 @@ class MultiHeadSAC(DeepAC):
                 state, action, reward, next_state, absorbing, _, idx, is_weight = \
                                                             self._replay_memory.get(self._batch_size())
                 # importance sampling loss correction
-                num_visits = is_weight
+                #num_visits = np.ones(shape=(self._batch_size(), 1))
+                num_visits = 1/is_weight
 
             if self._replay_memory.size > self._warmup_transitions():
                 action_new, log_prob = self.policy.compute_action_and_log_prob_t(state)
@@ -165,9 +168,6 @@ class MultiHeadSAC(DeepAC):
 
             q = self._reward_scale * np.repeat(np.expand_dims(reward, axis=1),q_next.shape[-1], axis=1) + self.mdp_info.gamma * q_next
 
-            self._critic_approximator.fit(state, action, q, num_visits=num_visits,
-                                          **self._critic_fit_params)
-
             if self._buffer_strategy == "uncertainty":
                 td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
                 critic_prediction = td_pred[:, td_pred[0].nonzero()]
@@ -178,8 +178,11 @@ class MultiHeadSAC(DeepAC):
                 critic_prediction = np.squeeze(td_pred[:, td_pred[0].nonzero()])
                 q_heads = np.squeeze(q[:, td_pred[0].nonzero()])
                 td_error = np.mean(np.square(critic_prediction - q_heads), axis=1)
-
                 self._replay_memory.update(np.squeeze(td_error), idx=idx)
+            
+            self._critic_approximator.fit(state, action, q, num_visits=num_visits,
+                                          **self._critic_fit_params)
+
 
             self._update_target(self._critic_approximator,
                                 self._target_critic_approximator)
@@ -188,7 +191,7 @@ class MultiHeadSAC(DeepAC):
         q = self._critic_approximator(state, action_new,
                                         output_tensor=True)
 
-        q = torch.mean(q, dim=1) #+ torch.max(q, dim=1).values * torch.sqrt(torch.from_numpy(num_visits).cuda())
+        q = torch.min(q, dim=1).values #+ torch.max(q, dim=1).values * torch.sqrt(torch.from_numpy(num_visits).cuda())
 
         return (self._alpha * log_prob - q).mean()
 

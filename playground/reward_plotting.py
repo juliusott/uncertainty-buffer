@@ -1,130 +1,69 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import os
+
+def get_recorded_rewards(directory,steps_per_epoch=1000, *keywords):
+    valid_recordings = [] 
+    num_keys = len([key for key in keywords])           
+    for record in os.listdir(directory):
+        print(f"num keys {num_keys}")
+        i = 0
+        for key in keywords:
+            if str(key) in record:
+                i +=1
+                print(key,i)
+            else:
+                break
+        if i == num_keys:
+            print(f"add {record}")
+            valid_recordings.append(directory+record)
+    data = np.concatenate([np.expand_dims(np.load(valid_recording),axis=1) for valid_recording in valid_recordings], axis=1)
+    data_extended = np.zeros((data.shape[0]*steps_per_epoch, data.shape[1])) # 1000 = number of steps per epoch
+    for i in range(data.shape[0]):
+        for j in range(data.shape[1]):
+            data_extended[i*1000, j] = data[i,j]
+
+    data_extended[data_extended==0] = np.nan
+    data_as_frame = pd.DataFrame(data=data_extended).interpolate(method="linear", axis=0)
+    data_mean = np.mean(data_as_frame.to_numpy(), axis=1)
+    data_std = np.std(data_as_frame.to_numpy(), axis=1)
+    max_val = np.amax(data_as_frame.to_numpy())
+    min_val = np.amin(data_as_frame.to_numpy())
+    return data_mean, data_std, max_val, min_val
 
 
-ddpg_1 = np.load("MultiHeadDDPG1.npy")
-ddpg_0 = np.load("MultiHeadDDPG.npy")
-ddpg_ex_0 = np.zeros((ddpg_0.shape[0]*1000, ))
-ddpg_ex_1 = np.zeros((ddpg_1.shape[0]*1000, ))
-for i in range(ddpg_0.shape[0]):
-    ddpg_ex_0[i*1000] = ddpg_0[i]
-    ddpg_ex_1[i*1000] = ddpg_1[i]
-ddpg_ex_0[ddpg_ex_0==0] = np.nan
-ddpg_ex_1[ddpg_ex_1==0] = np.nan
-ddpg_0 = pd.Series(ddpg_ex_0).interpolate(method="cubic")
-ddpg_1 = pd.Series(ddpg_ex_1).interpolate(method="cubic")
-ddpg = np.concatenate([np.expand_dims(ddpg_0,axis=1), np.expand_dims(ddpg_1,axis=1)], axis=-1)
-ddpg_mean = np.mean(ddpg, axis=1)
-ddpg_std = np.std(ddpg,axis=1)
-ddpg_std[0] = 0
-print(ddpg_std[:10])
+env_name = "Humanoid-v3"
+sac_mean_uncertainty_noise, sac_std_uncertainty_noise, _, _ = get_recorded_rewards("./experiments/", 1000, "SAC", env_name,"uncertainty", "noise", "True")
+sac_mean_prioritized_noise, sac_std_prioritized_noise, _, _  = get_recorded_rewards("./experiments/", 1000, "SAC", env_name,"prioritized", "noise", "True")
+sac_mean_uniform_noise, sac_std_uniform_noise, _, _  = get_recorded_rewards("./experiments/", 1000, "SAC", env_name,"uniform", "noise", "True")
 
-# Same for SAC
-sac_0 = np.load("MultiHeadSAC.npy")
-sac_1 = np.load("MultiHeadSAC1.npy")
-sac_ex_0 = np.zeros((sac_0.shape[0]*1000, ))
-sac_ex_1 = np.zeros((sac_1.shape[0]*1000, ))
-for i in range(sac_0.shape[0]):
-    sac_ex_0[i*1000] = sac_0[i]
-    sac_ex_1[i*1000] = sac_1[i]
-sac_ex_0[sac_ex_0==0] = np.nan
-sac_ex_1[sac_ex_1==0] = np.nan
-sac_0 = pd.Series(sac_ex_0).interpolate(method="cubic")
-sac_1 = pd.Series(sac_ex_1).interpolate(method="cubic")
-sac = np.concatenate([np.expand_dims(sac_0,axis=1), np.expand_dims(sac_1,axis=1)], axis=-1)
-sac_mean = np.mean(sac, axis=1)
-sac_std = np.std(sac,axis=1)
-sac_std[0] = 0
-print(sac_std[:10])
+sac_mean_uncertainty, sac_std_uncertainty, _, _  = get_recorded_rewards("./experiments/", 1000, "SAC", env_name,"uncertainty", "noise", "False")
+sac_mean_prioritized, sac_std_prioritized, _, _  = get_recorded_rewards("./experiments/", 1000, "SAC", env_name,"prioritized", "noise", "False")
+#sac_mean_uniform, sac_std_uniform = get_recorded_rewards("./experiments/", 1000, "SAC", env_name,"uniform", "noise", "False")
 
-
-# Same for SAC uniform
-sac_u_0 = np.load("playground/SAC.npy")
-sac_u_1 = np.load("playground/SAC1.npy")
-sac_u_ex_0 = np.zeros((sac_u_0.shape[0]*1000, ))
-sac_u_ex_1 = np.zeros((sac_u_1.shape[0]*1000, ))
-for i in range(sac_u_0.shape[0]):
-    sac_u_ex_0[i*1000] = sac_u_0[i]
-    sac_u_ex_1[i*1000] = sac_u_1[i]
-sac_u_ex_0[sac_u_ex_0==0] = np.nan
-sac_u_ex_1[sac_u_ex_1==0] = np.nan
-sac_u_0 = pd.Series(sac_u_ex_0).interpolate(method="cubic")
-sac_u_1 = pd.Series(sac_u_ex_1).interpolate(method="cubic")
-sac_u = np.concatenate([np.expand_dims(sac_u_0,axis=1), np.expand_dims(sac_u_1,axis=1)], axis=-1)
-sac_u_mean = np.mean(sac_u, axis=1)
-sac_u_std = np.std(sac_u,axis=1)
-sac_u_std[0] = 0
-print(sac_std[:10])
-
-
-#Same for TD3
-td3_0 = np.load("MultiHeadTD31std_x_mean.npy")
-td3_1 = np.load("MultiHeadTD32std_x_mean.npy")
-td3_2 = np.load("MultiHeadTD33std_x_mean.npy")
-td3_ex_0 = np.zeros((td3_0.shape[0]*1000, ))
-td3_ex_1 = np.zeros((td3_1.shape[0]*1000, ))
-td3_ex_2 = np.zeros((td3_2.shape[0]*1000, ))
-for i in range(td3_0.shape[0]):
-    td3_ex_0[i*1000] = td3_0[i]
-    td3_ex_1[i*1000] = td3_1[i]
-    td3_ex_2[i*1000] = td3_2[i]
-td3_ex_0[td3_ex_0==0] = np.nan
-td3_ex_1[td3_ex_1==0] = np.nan
-td3_ex_2[td3_ex_2==0] = np.nan
-td3_0 = pd.Series(td3_ex_0).interpolate(method="cubic")
-td3_1 = pd.Series(td3_ex_1).interpolate(method="cubic")
-td3_2 = pd.Series(td3_ex_2).interpolate(method="cubic")
-td3 = np.concatenate([np.expand_dims(td3_0,axis=1), np.expand_dims(td3_1,axis=1), np.expand_dims(td3_2,axis=1)], axis=-1)
-td3_mean = np.mean(td3, axis=1)
-td3_std = np.std(td3,axis=1)
-td3_std[0] = 0
-print(td3_mean.shape)
-
-#Same for TD3 uniform
-td3_u_0 = np.load("MultiHeadTD31std_div_mean.npy")
-td3_u_1 = np.load("MultiHeadTD32std_div_mean.npy")
-td3_u_2 = np.load("MultiHeadTD33std_div_mean.npy")
-td3_u_ex_0 = np.zeros((td3_u_0.shape[0]*1000, ))
-td3_u_ex_1 = np.zeros((td3_u_1.shape[0]*1000, ))
-td3_u_ex_2 = np.zeros((td3_u_2.shape[0]*1000, ))
-for i in range(td3_u_0.shape[0]):
-    td3_u_ex_0[i*1000] = td3_u_0[i]
-    td3_u_ex_1[i*1000] = td3_u_1[i]
-    td3_u_ex_2[i*1000] = td3_u_2[i]
-td3_u_ex_0[td3_u_ex_0==0] = np.nan
-td3_u_ex_1[td3_u_ex_1==0] = np.nan
-td3_u_ex_2[td3_u_ex_2==0] = np.nan
-td3_u_0 = pd.Series(td3_u_ex_0).interpolate(method="cubic")
-td3_u_1 = pd.Series(td3_u_ex_1).interpolate(method="cubic")
-td3_u_2 = pd.Series(td3_u_ex_2).interpolate(method="cubic")
-td3_u = np.concatenate([np.expand_dims(td3_u_0,axis=1), np.expand_dims(td3_u_1,axis=1), np.expand_dims(td3_u_2,axis=1)], axis=-1)
-td3_u_mean = np.mean(td3_u, axis=1)
-td3_u_std = np.std(td3_u,axis=1)
-td3_u_std[0] = 0
-print(td3_u_std.shape)
-
-td3_uniform = np.load("playground/TD3.npy")
-td3_uniform_ex = np.zeros((td3_uniform.shape[0]*1000, ))
-for i in range(td3_uniform.shape[0]):
-    td3_uniform_ex[i*1000] = td3_uniform[i]
-td3_uniform_ex[td3_uniform_ex==0] = np.nan
-td3_uniform = pd.Series(td3_uniform_ex).interpolate(method="cubic")
-
-epochs = np.arange(td3_mean.shape[0])
+td3_mean_uncertainty, td3_std_uncertainty, max_uncertainty, min_uncertainty = get_recorded_rewards("./experiments/", 1000, "TD3", env_name,"uncertainty", "noise", "False")
+td3_mean_prioritized, td3_std_prioritized, max_prioritized, min_prioritized  = get_recorded_rewards("./experiments/", 1000, "TD3", env_name,"prioritized", "noise", "False")
+td3_mean_uniform, td3_std_uniform, max_uniform, min_uniform  = get_recorded_rewards("./experiments/", 1000, "TD3", env_name,"uniform", "noise", "False")
+steps = np.arange(sac_mean_uncertainty.shape[0])
 #Plotting
-fig,ax = plt.subplots(figsize=(10,7))
-#ax.plot(epochs, ddpg_mean,lw=2, label="DDPG", color='blue')
-#ax.fill_between(ddpg_mean+ 10*ddpg_std, ddpg_mean-10*ddpg_std, facecolor='blue', alpha=1)
-#ax.plot(epochs,sac_mean, lw=1,label="SAC MEET", color='red')
-#ax.fill_between(epochs,sac_mean+sac_std, sac_mean-sac_std, facecolor='red', alpha=0.5)
-#ax.plot(epochs,sac_u_mean, lw=1,label="SAC uniform", color='orange')
-#ax.fill_between(epochs,sac_u_mean+sac_std, sac_u_mean-sac_std, facecolor='orange', alpha=0.5)
-ax.plot(epochs,td3_mean, lw=2,label="TD3 mean times variance", color='green')
-ax.fill_between(epochs,td3_mean+td3_std, td3_mean-td3_std, facecolor='green', alpha=0.5)
-ax.plot(epochs,td3_u_mean, lw=2,label="TD3 variance over mean", color='red')
-ax.fill_between(epochs,td3_u_mean+td3_u_std, td3_u_mean-td3_u_std, facecolor='red', alpha=0.5)
-ax.plot(epochs,td3_uniform[:200000], lw=2,label="TD3 uniform", color='blue')
-#ax.fill_between(td3_mean+10*td3_std, td3_mean-10*td3_std, facecolor='orange', alpha=0.5)
+fig,ax = plt.subplots(figsize=(14,9))
+ax.set_title(env_name)
+ax.set_xlabel("steps")
+ax.set_ylabel("reward")
+
+#ax.plot(steps,sac_mean_uncertainty_noise, lw=2,label="SAC MEET noise", color='green')
+#ax.fill_between(steps,sac_mean_uncertainty_noise+0.96*sac_std_uncertainty_noise, sac_mean_uncertainty_noise-0.96*sac_std_uncertainty_noise, facecolor='green', alpha=0.5)
+#ax.plot(steps,sac_mean_prioritized_noise, lw=2,label="SAC Prioritized noise", color='red')
+#ax.fill_between(steps,sac_mean_prioritized_noise+0.96*sac_std_prioritized_noise, sac_mean_prioritized_noise-0.96*sac_std_prioritized_noise, facecolor='red', alpha=0.5)
+#ax.plot(steps, sac_mean_uniform_noise, lw=2,label="SAC uniform", color='blue')
+#ax.fill_between(steps, sac_mean_uniform_noise+0.96*sac_std_uniform_noise, sac_mean_uniform_noise-0.96*sac_std_uniform_noise, facecolor='blue', alpha=0.5)
+
+ax.plot(steps,td3_mean_uncertainty, lw=2,label="TD3 MEET", color='cyan')
+ax.fill_between(steps,np.clip(td3_mean_uncertainty+0.96*td3_std_uncertainty,a_min=min_uncertainty, a_max=max_uncertainty), np.clip(td3_mean_uncertainty-0.96*td3_std_uncertainty, a_min=min_uncertainty, a_max=max_uncertainty), facecolor='cyan', alpha=0.5)
+ax.plot(steps,td3_mean_prioritized, lw=2,label="TD3 Prioritized", color='orange')
+ax.fill_between(steps,np.clip(td3_mean_prioritized+0.96*td3_std_prioritized,a_min=min_prioritized, a_max=max_prioritized), np.clip(td3_mean_prioritized-0.96*td3_std_prioritized, a_min=min_prioritized, a_max=max_prioritized), facecolor='orange', alpha=0.5)
+ax.plot(steps, td3_mean_uniform, lw=2,label="TD3 uniform", color='magenta')
+ax.fill_between(steps, np.clip(td3_mean_uniform+0.96*td3_std_uniform,a_min=min_uniform, a_max=min_uniform), np.clip(td3_mean_uniform-0.96*td3_std_uniform,a_min=min_uniform, a_max=max_uniform), facecolor='magenta', alpha=0.5)
 plt.legend()
 plt.show()

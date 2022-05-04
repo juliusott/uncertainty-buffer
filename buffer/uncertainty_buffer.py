@@ -266,7 +266,7 @@ class UncertaintyReplayMemory(Serializable):
 
         return np.array(states), np.array(actions), np.array(rewards),\
             np.array(next_states), np.array(absorbing), np.array(last),\
-            np.array(num_visits),idxs
+            np.array(num_visits)**self._beta(),idxs
 
     def update(self, critic_prediction, num_visits , idx):
         """
@@ -307,8 +307,8 @@ class UncertaintyReplayMemory(Serializable):
         std /= self.max_variance
         # sanity check if num visits is not updated
         num_visits[num_visits==0] = 1
-        beta = 1 - 1/num_visits  
-        priorities = std/num_visits + beta *std *mean
+        scale = 1 - 1/num_visits  
+        priorities = (std/num_visits + scale *std *mean)** self._alpha
         return priorities 
 
     def _update_priorites(self, idx, p):

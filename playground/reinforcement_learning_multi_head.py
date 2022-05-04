@@ -18,10 +18,10 @@ from mushroom_rl.utils.dataset import compute_J
 from tqdm import trange
 import os
 
-from networks.networks import MultiHeadCriticNetwork, ActorNetwork
+from networks.networks import MultiHeadCriticNetwork, ActorNetwork, MultiHeadCriticNetwork_noise
 
 
-def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy):
+def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alpha, buffer_beta):
     #np.random.seed()
 
     logger = Logger(alg.__name__, results_dir=None)
@@ -42,11 +42,16 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy):
 
     # Settings
     initial_replay_size = 550
-    max_replay_size = 100000
+    max_replay_size = int(2**18)
     batch_size = 256
     n_features = 64
     tau = .001
     warmup_transitions = 100
+    use_noise = True
+    if use_noise:
+        critic_network = MultiHeadCriticNetwork_noise
+    else:
+        critic_network = MultiHeadCriticNetwork
 
     # Approximator
     actor_input_shape = mdp.info.observation_space.shape
@@ -66,7 +71,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy):
                        'params': {'lr': .001}}
 
     critic_input_shape = (actor_input_shape[0] + mdp.info.action_space.shape[0],)
-    critic_params = dict(network=MultiHeadCriticNetwork,
+    critic_params = dict(network=critic_network,
                          optimizer={'class': optim.Adam,
                                     'params': {'lr': .001}},
                          loss=F.mse_loss,
@@ -83,7 +88,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy):
         agent = alg(mdp.info, actor_params, actor_sigma_params,
                 actor_optimizer, critic_params, batch_size, initial_replay_size,
                 max_replay_size, warmup_transitions, tau, lr_alpha,
-                critic_fit_params=None, buffer_strategy=buffer_strategy)
+                critic_fit_params=None, buffer_strategy=buffer_strategy, buffer_alpha=buffer_alpha, buffer_beta=buffer_beta)
     else:
         agent = alg(mdp.info, policy_class, policy_params,
                 actor_params, actor_optimizer, critic_params, batch_size,
@@ -102,10 +107,10 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy):
 
     logger.epoch_info(0, J=J, R=R)
     rewards = list()
-    filename = alg.__name__+".npy"
     k= 1
+    filename = f"{alg.__name__}{k}_{env_name}_{buffer_strategy}_noise{use_noise}_alpha{buffer_alpha}_beta{buffer_beta}.npy"
     while os.path.isfile(filename):
-        filename = f"{alg.__name__}{k}{env_name}.npy"
+        filename = f"{alg.__name__}{k}_{env_name}_{buffer_strategy}_noise{use_noise}_alpha{buffer_alpha}_beta{buffer_beta}.npy"
         k +=1 
     print(f"save file {filename}")
     for n in trange(n_epochs, leave=False):
@@ -144,4 +149,6 @@ if __name__ == '__main__':
         alg = MultiHeadDDPG
 
     for _ in range(n_experiments):
-        experiment(alg=alg, n_epochs=n_epochs, n_steps=1000, n_steps_test=1000, buffer_strategy=buffer_strategy)
+        for buffer_alpha in [0.1, 0.2, 0.4, 0.6, 0.8, 1]:
+            for buffer_beta in [0.9, 0.7, 0.5, 0.3, 0.1]:
+                experiment(alg=alg, n_epochs=n_epochs, n_steps=1000, n_steps_test=1000, buffer_strategy=buffer_strategy, buffer_alpha=buffer_alpha, buffer_beta=buffer_beta)
