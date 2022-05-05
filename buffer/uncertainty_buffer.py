@@ -266,7 +266,7 @@ class UncertaintyReplayMemory(Serializable):
 
         return np.array(states), np.array(actions), np.array(rewards),\
             np.array(next_states), np.array(absorbing), np.array(last),\
-            np.array(num_visits)**self._beta(),idxs
+            np.array(num_visits),idxs
 
     def update(self, critic_prediction, num_visits , idx):
         """
@@ -309,6 +309,7 @@ class UncertaintyReplayMemory(Serializable):
         num_visits[num_visits==0] = 1
         scale = 1 - 1/num_visits  
         priorities = (std/num_visits + scale *std *mean)** self._alpha
+        # print(f"min{np.amin(num_visits)} max {np.amax(num_visits)}")
         return priorities 
 
     def _update_priorites(self, idx, p):
@@ -382,6 +383,7 @@ class AlternativeMEETReplayMemory(Serializable):
         self._buffer = deque([], maxlen=max_size)
         self._mean_track = [0,0]
         self._std_track = [0,0]
+        self._min_mean_track = [0,0]
         self._initial_size = initial_size
         self._max_size = max_size
         self._alpha = alpha
@@ -494,23 +496,30 @@ class AlternativeMEETReplayMemory(Serializable):
         std = np.std(critic_prediction, axis=-1)
 
         max_mean = np.amax(mean)
+        min_mean = np.amin(mean)
         max_std = np.amax(std)
         #keep track of max values for normalisation
         if self._mean_track[0] < max_mean or self._mean_track[1] in idx:
             self._mean_track[0] = max_mean 
             self._mean_track[1] = idx[np.argmax(mean)]
+
+        if self._min_mean_track[0] > min_mean or self._min_mean_track[1] in idx:
+            self._min_mean_track[0] = min_mean 
+            self._min_mean_track[1] = idx[np.argmin(mean)]
         
         if self._std_track[0] < max_std or self._std_track[1] in idx:
             self._std_track[0] = max_std
             self._std_track[1] = idx[np.argmax(std)]
 
         # Normalize mean and variance
+        mean += self._min_mean_track[0]
         mean /= self.max_mean
         std /= self.max_variance
         # sanity check if num visits is not updated
         num_visits[num_visits==0] = 1
         beta = 1 - 1/num_visits  
         priorities = std/num_visits + beta *std *mean
+        print(f"min{np.amin(priorities)} max {np.amax(priorities)}")
         return priorities 
 
     @property

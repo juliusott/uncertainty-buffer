@@ -1,10 +1,65 @@
 import torch
 import numpy as np
 from tqdm import trange, tqdm
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import Line2D
+matplotlib.rcParams.update({'figure.autolayout': True})
 
 from mushroom_rl.core import Serializable
 from mushroom_rl.utils.minibatches import minibatch_generator
 from mushroom_rl.utils.torch import get_weights, set_weights, zero_grad, update_optimizer_parameters
+
+def plot_grad_flow(named_parameters, filename):
+    '''Plots the gradients flowing through different layers in the net during training.
+    Can be used for checking for possible gradient vanishing / exploding problems.
+    
+    Usage: Plug this function in Trainer class after loss.backwards() as 
+    "plot_grad_flow(self.model.named_parameters())" to visualize the gradient flow'''
+    fig, (ax1, ax2) = plt.subplots(2,1, figsize=(10,7), sharex=True)
+    ave_grads = []
+    max_grads= []
+    ave_weights = []
+    max_weights = []
+    layers = []
+    for n, p in named_parameters:
+        if(p.requires_grad) and ("bias" not in n):
+            grad = p.grad.cpu()
+            p = p.detach().cpu()
+            layers.append(n)
+            ave_grads.append(grad.abs().mean())
+            max_grads.append(grad.abs().max())
+            ave_weights.append(p.abs().mean())
+            max_weights.append(p.abs().max())
+    ax1.bar(np.arange(len(max_grads)), max_grads, alpha=0.5, lw=1, color="c")
+    ax1.bar(np.arange(len(max_grads)), ave_grads, alpha=0.5, lw=1, color="b")
+    ax1.hlines(0, 0, len(ave_grads)+1, lw=2, color="k" )
+    ax1.set_xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
+    ax1.set_xlim(left=0, right=len(ave_grads))
+    # ax.set_ylim(bottom = -0.001, top=0.02) # zoom in on the lower gradient regions
+    ax1.set_xlabel("Layers")
+    ax1.set_ylabel("average gradient")
+    ax1.set_title("Gradient flow")
+    ax1.grid(True)
+    ax1.legend([Line2D([0], [0], color="c", lw=4),
+                Line2D([0], [0], color="b", lw=4),
+                Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
+    ax2.bar(np.arange(len(max_weights)), max_weights, alpha=0.5, lw=1, color="c")
+    ax2.bar(np.arange(len(max_weights)), ave_weights, alpha=0.5, lw=1, color="b")
+    ax2.hlines(0, 0, len(ave_weights)+1, lw=2, color="k" )
+    ax2.set_xticks(range(0,len(ave_weights), 1), layers, rotation="vertical")
+    ax2.set_xlim(left=0, right=len(ave_weights))
+    # ax.set_ylim(bottom = -0.001, top=0.02) # zoom in on the lower gradient regions
+    ax2.set_xlabel("Layers")
+    ax2.set_ylabel("average weight")
+    ax2.set_title("Weight flow")
+    ax2.grid(True)
+    ax2.legend([Line2D([0], [0], color="c", lw=4),
+                Line2D([0], [0], color="b", lw=4),
+                Line2D([0], [0], color="k", lw=4)], ['max-weight', 'mean-weight', 'zero-weight'])
+    fig.savefig(filename)
+    plt.close()
 
 
 class MaskedTorchApproximator(Serializable):
@@ -42,6 +97,8 @@ class MaskedTorchApproximator(Serializable):
             **params: dictionary of parameters needed to construct the
                 network.
         """
+        self.plot_grad = 0
+        self.update_mask = 0
         self._batch_size = batch_size
         self._reinitialize = reinitialize
         self._use_cuda = use_cuda
@@ -124,7 +181,7 @@ class MaskedTorchApproximator(Serializable):
 
         return val
 
-    def fit(self, *args, num_visits, n_epochs=None, weights=None, epsilon=None, patience=1,
+    def fit(self, *args, n_epochs=None, weights=None, epsilon=None, patience=1,
             validation_split=1., **kwargs):
         """
         Fit the model.
@@ -143,6 +200,9 @@ class MaskedTorchApproximator(Serializable):
             **kwargs: other parameters used by the fit method of the
                 regressor.
         """
+        if self.update_mask % 10 == 0:
+            self.network.update_heads_mask()
+        self.update_mask += 1
         if self._reinitialize:
             self.network.weights_init()
 
@@ -178,7 +238,7 @@ class MaskedTorchApproximator(Serializable):
                       dynamic_ncols=True, disable=self._quiet,
                       leave=False) as t_epochs:
                 while patience_count < patience and epochs_count < n_epochs:
-                    mean_loss_current = self._fit_epoch(train_args,num_visits, use_weights,
+                    mean_loss_current = self._fit_epoch(train_args, use_weights,
                                                         kwargs)
 
                     if len(val_args[0]):
@@ -206,19 +266,19 @@ class MaskedTorchApproximator(Serializable):
         else:
             with trange(n_epochs, disable=self._quiet) as t_epochs:
                 for _ in t_epochs:
-                    mean_loss_current = self._fit_epoch(train_args,num_visits, use_weights,
+                    mean_loss_current = self._fit_epoch(train_args, use_weights,
                                                         kwargs)
 
                     if not self._quiet:
                         t_epochs.set_postfix(loss=mean_loss_current)
 
                     self._last_loss = mean_loss_current
+                    epochs_count += 1
 
         if self._dropout:
             self.network.eval()
 
-    def _fit_epoch(self, args, num_visits, use_weights, kwargs):
-        self.network.update_heads_mask()
+    def _fit_epoch(self, args, use_weights, kwargs):
         if self._batch_size > 0:
             batches = minibatch_generator(self._batch_size, *args)
         else:
@@ -226,23 +286,29 @@ class MaskedTorchApproximator(Serializable):
 
         loss_current = list()
         for batch in batches:
-            loss_current.append(self._fit_batch(batch,num_visits, use_weights, kwargs))
+            loss_current.append(self._fit_batch(batch, use_weights, kwargs))
 
         mean_loss_current = np.mean(loss_current)
 
         return mean_loss_current
 
-    def _fit_batch(self, batch,num_visits, use_weights, kwargs):
-        loss = self._compute_batch_loss(batch, num_visits, use_weights, kwargs)
-
+    def _fit_batch(self, batch, use_weights, kwargs):
+        loss = self._compute_batch_loss(batch, use_weights, kwargs)
         self._optimizer.zero_grad()
         loss.backward()
+        # torch.nn.utils.clip_grad_norm_(self.network.parameters(), max_norm=2)
+        if self.plot_grad % 10000 == 0:
+            print(f"plotting")
+            print(f"mask {self.network.get_heads_mask()}")
+            plot_grad_flow(self.network.named_parameters(), filename=f"./grad_figs/fig_grad{self.plot_grad}.png")
+            self.network.update_heads_mask()
+        self.plot_grad += 1
+
         self._optimizer.step()
 
         return loss.item()
 
-    def _compute_batch_loss(self, batch, num_visits, use_weights, kwargs):
-        num_visits[num_visits==0] = 1
+    def _compute_batch_loss(self, batch, use_weights, kwargs):
         if use_weights:
             weights = torch.from_numpy(batch[-1]).type(torch.float)
             if self._use_cuda:
@@ -251,10 +317,8 @@ class MaskedTorchApproximator(Serializable):
 
         if not self._use_cuda:
             torch_args = [torch.from_numpy(x) for x in batch]
-            num_visits = torch.from_numpy(num_visits)
         else:
             torch_args = [torch.from_numpy(x).cuda() for x in batch]
-            num_visits = torch.from_numpy(num_visits).cuda()
             
         x = torch_args[:-self._n_fit_targets]
 
@@ -285,7 +349,7 @@ class MaskedTorchApproximator(Serializable):
             loss = loss.mean(dim=0)
             #print(f"loss {loss} {loss.shape} mask {mask.shape}")
             loss @= mask
-            #print(f"loss {loss} mask {mask}")
+            # print(f"loss {loss} mask {mask}")
             loss = loss / mask.sum()
 
         

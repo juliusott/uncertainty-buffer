@@ -18,7 +18,7 @@ from mushroom_rl.utils.dataset import compute_J
 from tqdm import trange
 import os
 
-from networks.networks import MultiHeadCriticNetwork, ActorNetwork, MultiHeadCriticNetwork_noise
+from networks.networks import MultiHeadCriticNetwork, ActorNetwork, MultiHeadCriticNetwork_noise, SACActorNetwork
 
 
 def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alpha, buffer_beta):
@@ -42,9 +42,9 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alp
 
     # Settings
     initial_replay_size = 550
-    max_replay_size = int(2**18)
+    max_replay_size = int(2**16)
     batch_size = 256
-    n_features = 64
+    n_features = 256
     tau = .001
     warmup_transitions = 100
     use_noise = True
@@ -53,15 +53,20 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alp
     else:
         critic_network = MultiHeadCriticNetwork
 
+    if "SAC" in alg.__name__:
+        actor_network = SACActorNetwork
+    else:
+        actor_network = ActorNetwork
+
     # Approximator
     actor_input_shape = mdp.info.observation_space.shape
-    actor_params = dict(network=ActorNetwork,
+    actor_params = dict(network=actor_network,
                         n_features=n_features,
                         input_shape=actor_input_shape,
                         output_shape=mdp.info.action_space.shape,
                         use_cuda=use_cuda)
 
-    actor_sigma_params = dict(network=ActorNetwork,
+    actor_sigma_params = dict(network=actor_network,
                               n_features=n_features,
                               input_shape=actor_input_shape,
                               output_shape=mdp.info.action_space.shape,
@@ -114,7 +119,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alp
         k +=1 
     print(f"save file {filename}")
     for n in trange(n_epochs, leave=False):
-        core.learn(n_steps=n_steps, n_steps_per_fit=1)
+        core.learn(n_steps=n_steps, n_steps_per_fit=5)
         dataset = core.evaluate(n_steps=n_steps_test, render=False)
         J = np.mean(compute_J(dataset, gamma))
         R = np.mean(compute_J(dataset))
@@ -149,6 +154,4 @@ if __name__ == '__main__':
         alg = MultiHeadDDPG
 
     for _ in range(n_experiments):
-        for buffer_alpha in [0.1, 0.2, 0.4, 0.6, 0.8, 1]:
-            for buffer_beta in [0.9, 0.7, 0.5, 0.3, 0.1]:
-                experiment(alg=alg, n_epochs=n_epochs, n_steps=1000, n_steps_test=1000, buffer_strategy=buffer_strategy, buffer_alpha=buffer_alpha, buffer_beta=buffer_beta)
+        experiment(alg=alg, n_epochs=n_epochs, n_steps=1000, n_steps_test=1500, buffer_strategy=buffer_strategy, buffer_alpha=1, buffer_beta=1)

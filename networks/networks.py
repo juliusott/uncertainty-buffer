@@ -6,6 +6,31 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 
+class SACActorNetwork(nn.Module):
+    def __init__(self, input_shape, output_shape, n_features, **kwargs):
+        super(SACActorNetwork, self).__init__()
+
+        n_input = input_shape[-1]
+        n_output = output_shape[0]
+
+        self._h1 = nn.Linear(n_input, 512)
+        self._h2 = nn.Linear(512, 256)
+        self._h3 = nn.Linear(256, n_output)
+
+        nn.init.xavier_uniform_(self._h1.weight,
+                                gain=nn.init.calculate_gain('relu'))
+        nn.init.xavier_uniform_(self._h2.weight,
+                                gain=nn.init.calculate_gain('relu'))
+        nn.init.xavier_uniform_(self._h3.weight,
+                                gain=nn.init.calculate_gain('linear'))
+
+    def forward(self, state):
+        features1 = F.relu(self._h1(torch.squeeze(state, 1).float()))
+        features2 = F.relu(self._h2(features1))
+        a = self._h3(features2)
+
+        return a
+
 class ActorNetwork(nn.Module):
     def __init__(self, input_shape, output_shape, n_features, **kwargs):
         super(ActorNetwork, self).__init__()
@@ -69,6 +94,7 @@ class MultiHeadCriticNetwork_noise(nn.Module):
         self.head_prob_dist = torch.distributions.bernoulli.Bernoulli(torch.tensor([head_prob for _ in range (self.n_heads)]))
         self.heads_mask = self.head_prob_dist.sample()
 
+
         self._h1 = nn.Linear(n_input, n_features)
         self._h2 = nn.Linear(n_features, n_features)
 
@@ -109,9 +135,8 @@ class MultiHeadCriticNetwork_noise(nn.Module):
                                 gain=nn.init.calculate_gain('linear'))
 
     def update_heads_mask(self):
-        #self.heads_mask = torch.ones(self.n_heads)
-
-        while self.heads_mask.sum() == 0:
+        self.heads_mask = self.head_prob_dist.sample()
+        while self.heads_mask.sum() < 2:
             self.heads_mask = self.head_prob_dist.sample()
 
 
@@ -148,7 +173,7 @@ class MultiHeadCriticNetwork_noise(nn.Module):
         return torch.squeeze(q)
 
 class MultiHeadCriticNetwork(nn.Module):
-    def __init__(self, input_shape, output_shape, n_features, head_prob = 0.7, **kwargs):
+    def __init__(self, input_shape, output_shape, n_features, head_prob = 0.2, **kwargs):
         super().__init__()
 
         n_input = input_shape[-1]
@@ -158,6 +183,7 @@ class MultiHeadCriticNetwork(nn.Module):
         self.n_heads = 10
         self.head_prob_dist = torch.distributions.bernoulli.Bernoulli(torch.tensor([head_prob for _ in range (self.n_heads)]))
         self.heads_mask = self.head_prob_dist.sample()
+        self.layer_norm_1 = torch.nn.LayerNorm(n_features)
 
         self._h1 = nn.Linear(n_input, n_features)
         self._h2 = nn.Linear(n_features, n_features)
@@ -200,8 +226,8 @@ class MultiHeadCriticNetwork(nn.Module):
 
     def update_heads_mask(self):
         #self.heads_mask = torch.ones(self.n_heads)
-
-        while self.heads_mask.sum() == 0:
+        self.heads_mask = self.head_prob_dist.sample()
+        while self.heads_mask.sum() < 2:
             self.heads_mask = self.head_prob_dist.sample()
 
 
@@ -210,7 +236,7 @@ class MultiHeadCriticNetwork(nn.Module):
 
     def forward(self, state, action):
         state_action = torch.cat((state.float(), action.float()), dim=1)
-        features1 = F.relu(self._h1(state_action))
+        features1 = F.relu(self.layer_norm_1(self._h1(state_action)))
         features2 = F.relu(self._h2(features1))
         q0 = self.head0(features2)
         q1 = self.head1(features2)

@@ -147,51 +147,56 @@ class MultiHeadSAC(DeepAC):
                 state, action, reward, next_state, absorbing, _ = \
                                                             self._replay_memory.get(self._batch_size())
                 # no loss correction
-                num_visits = np.ones(shape=(self._batch_size(), 1))
+                weight = None
             elif self._buffer_strategy == "uncertainty":
                 state, action, reward, next_state, absorbing, _ , num_visits, idx =\
                                                             self._replay_memory.get(self._batch_size())
+                weight = 1/num_visits
             else:
                 state, action, reward, next_state, absorbing, _, idx, is_weight = \
                                                             self._replay_memory.get(self._batch_size())
                 # importance sampling loss correction
                 #num_visits = np.ones(shape=(self._batch_size(), 1))
-                num_visits = 1/is_weight
-
-            if self._replay_memory.size > self._warmup_transitions():
-                action_new, log_prob = self.policy.compute_action_and_log_prob_t(state)
-                loss = self._loss(state, action_new, log_prob, num_visits)
-                self._optimize_actor_parameters(loss)
-                self._update_alpha(log_prob.detach())
+                weight = is_weight
 
             q_next = self._next_q(next_state, absorbing)
 
             q = self._reward_scale * np.repeat(np.expand_dims(reward, axis=1),q_next.shape[-1], axis=1) + self.mdp_info.gamma * q_next
+            
+            td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
 
             if self._buffer_strategy == "uncertainty":
-                td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
                 critic_prediction = td_pred[:, td_pred[0].nonzero()]
                 self._replay_memory.update(np.squeeze(critic_prediction), num_visits = num_visits ,idx=idx)
             elif self._buffer_strategy == "prioritized":
-                td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
                 # choose the sampled heads only
                 critic_prediction = np.squeeze(td_pred[:, td_pred[0].nonzero()])
                 q_heads = np.squeeze(q[:, td_pred[0].nonzero()])
                 td_error = np.mean(np.square(critic_prediction - q_heads), axis=1)
                 self._replay_memory.update(np.squeeze(td_error), idx=idx)
+
+            mask = td_pred[0].nonzero()
+
+            if self._replay_memory.size > self._warmup_transitions():
+                action_new, log_prob = self.policy.compute_action_and_log_prob_t(state)
+                loss = self._loss(state, action_new, log_prob, mask)
+                self._optimize_actor_parameters(loss)
+                self._update_alpha(log_prob.detach())
             
-            self._critic_approximator.fit(state, action, q, num_visits=num_visits,
+            self._critic_approximator.fit(state, action, q, weights=weight,
                                           **self._critic_fit_params)
 
 
             self._update_target(self._critic_approximator,
                                 self._target_critic_approximator)
 
-    def _loss(self, state, action_new, log_prob, num_visits):
+    def _loss(self, state, action_new, log_prob, mask):
         q = self._critic_approximator(state, action_new,
                                         output_tensor=True)
+        q = torch.squeeze(q[:, mask])
+        # print(f"q min {q[0,...]} mask {mask}")
 
-        q = torch.min(q, dim=1).values #+ torch.max(q, dim=1).values * torch.sqrt(torch.from_numpy(num_visits).cuda())
+        q = torch.min(q, dim=1).values 
 
         return (self._alpha * log_prob - q).mean()
 
