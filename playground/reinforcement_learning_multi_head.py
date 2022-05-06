@@ -73,14 +73,18 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alp
                               input_shape=actor_input_shape,
                               output_shape=mdp.info.action_space.shape,
                               use_cuda=use_cuda)
-
-    actor_optimizer = {'class': optim.Adam,
-                       'params': {'lr': .001}}
+    
+    if "SAC" in alg.__name__ or "sac" in alg.__name__ :
+        actor_optimizer = {'class': optim.Adam,
+                        'params': {'lr': 3e-4}}
+    else:
+        actor_optimizer = {'class': optim.Adam,
+                        'params': {'lr': .001}}
 
     critic_input_shape = (actor_input_shape[0] + mdp.info.action_space.shape[0],)
     critic_params = dict(network=critic_network,
                          optimizer={'class': optim.Adam,
-                                    'params': {'lr': .001}},
+                                    'params': {'lr': 3e-4}},
                          loss=F.mse_loss,
                          n_features=n_features,
                          input_shape=critic_input_shape,
@@ -89,7 +93,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alp
                          use_cuda=use_cuda)
 
     # Agent
-    if "SAC" in alg.__name__:
+    if "SAC" in alg.__name__ or "sac" in alg.__name__ :
         tau = 0.005
         lr_alpha = 3e-4
         agent = alg(mdp.info, actor_params, actor_sigma_params,
@@ -122,7 +126,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alp
     print(f"save file {filename}")
     s = None
     for n in trange(n_epochs, leave=False):
-        core.learn(n_steps=n_steps, n_steps_per_fit=15)
+        core.learn(n_steps=n_steps, n_steps_per_fit=1)
         dataset = core.evaluate(n_steps=n_steps_test, render=False)
         s, *_ = parse_dataset(dataset)
         J = np.mean(compute_J(dataset, gamma))

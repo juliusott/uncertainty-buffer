@@ -156,7 +156,6 @@ class MultiHeadSAC(DeepAC):
                 state, action, reward, next_state, absorbing, _, idx, is_weight = \
                                                             self._replay_memory.get(self._batch_size())
                 # importance sampling loss correction
-                #num_visits = np.ones(shape=(self._batch_size(), 1))
                 weight = is_weight
 
             td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
