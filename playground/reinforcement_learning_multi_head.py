@@ -1,7 +1,9 @@
 from re import A
 import numpy as np
 import argparse
-
+import sys
+sys.path.append('/home/sanchez/mda_mrtl/nodm/mrtl/units/metartl/home/mujoco/uncertainty-buffer/')
+print(sys.path)
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -13,7 +15,7 @@ from agents.mult_head_sac import MultiHeadSAC
 from mushroom_rl.core import Core, Logger
 from mushroom_rl.environments.gym_env import Gym
 from mushroom_rl.policy import OrnsteinUhlenbeckPolicy
-from mushroom_rl.utils.dataset import compute_J
+from mushroom_rl.utils.dataset import compute_J, parse_dataset
 
 from tqdm import trange
 import os
@@ -41,13 +43,13 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alp
     policy_params = dict(sigma=np.ones(1) * .2, theta=.15, dt=1e-2)
 
     # Settings
-    initial_replay_size = 550
-    max_replay_size = int(2**16)
+    initial_replay_size = 300
+    max_replay_size = 100000
     batch_size = 256
     n_features = 256
     tau = .001
-    warmup_transitions = 100
-    use_noise = True
+    warmup_transitions = 1000
+    use_noise = False
     if use_noise:
         critic_network = MultiHeadCriticNetwork_noise
     else:
@@ -118,16 +120,22 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alp
         filename = f"{alg.__name__}{k}_{env_name}_{buffer_strategy}_noise{use_noise}_alpha{buffer_alpha}_beta{buffer_beta}.npy"
         k +=1 
     print(f"save file {filename}")
+    s = None
     for n in trange(n_epochs, leave=False):
-        core.learn(n_steps=n_steps, n_steps_per_fit=5)
+        core.learn(n_steps=n_steps, n_steps_per_fit=15)
         dataset = core.evaluate(n_steps=n_steps_test, render=False)
+        s, *_ = parse_dataset(dataset)
         J = np.mean(compute_J(dataset, gamma))
         R = np.mean(compute_J(dataset))
+        if "SAC" in alg.__name__:
+            E = agent.policy.entropy(s)
+        else:
+            E = None
         rewards.append(R)
         if n % 100 == 0 :
             #agent.save_buffer_snapshot(alg_name=alg.__name__,  epoch=n+1)
             np.save(filename, np.array(rewards))
-        logger.epoch_info(n+1, J=J, R=R)
+        logger.epoch_info(n+1, J=J, R=R, entropy=E)
     np.save(filename, np.array(rewards))
     #logger.info('Press a button to visualize pendulum')
     #input()
@@ -137,7 +145,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alp
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='define experimental setup')
     parser.add_argument('--buffer', help='buffer sampling strategy [uniform, uncertainty, prioritized]', type=str, default="uniform")
-    parser.add_argument('--alg', help='choose algorithm [SAC, DDPG, TD3]', type=str, default="SAC")
+    parser.add_argument('--alg', help='choose algorithm [SAC, DDPG, TD3]', type=str, default="sac")
     parser.add_argument('--n_epochs', help='number of epochs per iteration', type=int, default=1000)
     parser.add_argument('--n_experiments', help='number of experiments ', type=int, default=1)
     args = parser.parse_args()
@@ -146,9 +154,9 @@ if __name__ == '__main__':
     algorithm = args.alg
     n_epochs = int(args.n_epochs)
     n_experiments = int(args.n_experiments)
-    if algorithm == "SAC":
+    if algorithm == "sac" or algorithm.lower() == "sac":
         alg = MultiHeadSAC
-    elif algorithm == "TD3":
+    elif algorithm == "td3":
         alg = MultiHeadTD3
     else:
         alg = MultiHeadDDPG

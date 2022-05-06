@@ -64,11 +64,12 @@ class MultiHeadTD3(MultiHeadDDPG):
                          initial_replay_size, max_replay_size, tau,
                          policy_delay, critic_fit_params, warmup_transitions=warmup_transitions, buffer_strategy=buffer_strategy)
 
-    def _loss(self, state, num_visits):
+    def _loss(self, state, num_visits, mask):
         action = self._actor_approximator(state, output_tensor=True, **self._actor_predict_params)
-        q = self._critic_approximator(state, action, output_tensor=True, **self._critic_predict_params) / torch.from_numpy(np.expand_dims(num_visits, axis=1)).cuda()
-
-        return -torch.min(q, dim=1).values.mean()
+        q = self._critic_approximator(state, action, output_tensor=True, **self._critic_predict_params)
+        q = q[:, np.array(mask)]
+        q = q.min(axis=1).values
+        return -q.mean()
 
     def _next_q(self, next_state, absorbing):
         """

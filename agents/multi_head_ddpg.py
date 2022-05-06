@@ -123,25 +123,26 @@ class MultiHeadDDPG(DeepAC):
                 state, action, reward, next_state, absorbing, _ = \
                                                             self._replay_memory.get(self._batch_size())
                 # no loss correction
-                num_visits = np.ones(shape=(self._batch_size(), 1))
+                weight = None
             elif self._buffer_strategy == "uncertainty" :
                 state, action, reward, next_state, absorbing, _ , num_visits, idx =\
                                                             self._replay_memory.get(self._batch_size())
+                weight = 1/num_visits
             else:
                 state, action, reward, next_state, absorbing, _, idx, is_weight = \
                                                             self._replay_memory.get(self._batch_size())
                 # importance sampling loss correction
-                num_visits = 1/is_weight
+                weight = is_weight
 
             q_next = self._next_q(next_state, absorbing)
 
             q = self._reward_scale*np.repeat(np.expand_dims(reward, axis=1),self.n_heads, axis=1) + self.mdp_info.gamma * q_next
 
-            self._critic_approximator.fit(state, action, q, num_visits=num_visits,
+            self._critic_approximator.fit(state, action, q, weights=weight,
                                           **self._critic_fit_params)
 
             td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
-
+            mask = np.array([td_pred[0, ...] !=0], dtype=np.float32)
             if self._buffer_strategy == "uncertainty":
                 td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
                 critic_prediction = td_pred[:, td_pred[0].nonzero()]
@@ -156,7 +157,7 @@ class MultiHeadDDPG(DeepAC):
                 self._replay_memory.update(np.squeeze(td_error), idx=idx)
 
             if self._fit_count % self._policy_delay() == 0:
-                loss = self._loss(state, num_visits)
+                loss = self._loss(state, num_visits, mask)
                 self._optimize_actor_parameters(loss)
 
             self._update_target(self._critic_approximator,
@@ -166,10 +167,12 @@ class MultiHeadDDPG(DeepAC):
 
             self._fit_count += 1
 
-    def _loss(self, state, num_visits):
+    def _loss(self, state, num_visits, mask):
         action = self._actor_approximator(state, output_tensor=True, **self._actor_predict_params)
-        q = self._critic_approximator(state, action, output_tensor=True, **self._critic_predict_params) / torch.from_numpy(np.expand_dims(num_visits, axis=1)).cuda()
-        q = q.min(axis=1).values
+        q = self._critic_approximator(state, action, output_tensor=True, **self._critic_predict_params)
+        q = q[:, mask]
+        #print(f"q {q} mask {mask}")
+        # q = torch.min(dim=1).values
         return -q.mean()
 
     def _next_q(self, next_state, absorbing):

@@ -293,6 +293,11 @@ class UncertaintyReplayMemory(Serializable):
         mean += np.abs(self._min_mean_track[0])
         max_mean = np.amax(mean)
         max_std = np.amax(std)
+
+        # Normalize mean and variance
+        mean /= self.max_mean
+        std /= self.max_variance
+
         #keep track of max values for normalisation
         if self._max_mean_track[0] < max_mean or self._max_mean_track[1] in idx:
             self._max_mean_track[0] = max_mean 
@@ -301,10 +306,6 @@ class UncertaintyReplayMemory(Serializable):
         if self._max_std_track[0] < max_std or self._max_std_track[1] in idx:
             self._max_std_track[0] = max_std
             self._max_std_track[1] = idx[np.argmax(std)]
-
-        # Normalize mean and variance
-        mean /= self.max_mean
-        std /= self.max_variance
         # sanity check if num visits is not updated
         num_visits[num_visits==0] = 1
         scale = 1 - 1/num_visits  

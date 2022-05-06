@@ -300,7 +300,7 @@ class MaskedTorchApproximator(Serializable):
         if self.plot_grad % 10000 == 0:
             print(f"plotting")
             print(f"mask {self.network.get_heads_mask()}")
-            plot_grad_flow(self.network.named_parameters(), filename=f"./grad_figs/fig_grad{self.plot_grad}.png")
+            # plot_grad_flow(self.network.named_parameters(), filename=f"./grad_figs/fig_grad{self.plot_grad}.png")
             self.network.update_heads_mask()
         self.plot_grad += 1
 
@@ -341,16 +341,27 @@ class MaskedTorchApproximator(Serializable):
 
         if not self.use_mask:
             loss = self._loss(y_hat, *y)
-        else:
+        elif use_weights == True:
             #print(f"num_vistis {num_visits.shape}")
             #print(f"y and yhat {y_hat.shape}")
-            loss = self._loss(y_hat, *y, reduction='none') #/ num_visits.unsqueeze(dim=1)
+            loss = self._loss(y_hat, *y, reduction='none')
+            # size (batch_size, n_heads)
+            # mask size (n_heads, 1)
+            loss @= mask # (batch_size, 1)
+            #print(f"loss {loss.shape}mask {mask.shape}")
+            loss *= weights
+            loss = loss / (weights.sum() * mask.sum())
+            #print(f"loss shpae {loss.shape}")
+            loss = loss.mean()
+        else:
+            loss = self._loss(y_hat, *y, reduction='none')
             #print(f"loss shpae {loss.shape}")
             loss = loss.mean(dim=0)
             #print(f"loss {loss} {loss.shape} mask {mask.shape}")
             loss @= mask
             # print(f"loss {loss} mask {mask}")
             loss = loss / mask.sum()
+
 
         
         loss = loss
