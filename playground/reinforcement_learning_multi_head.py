@@ -23,7 +23,7 @@ import os
 from networks.networks import MultiHeadCriticNetwork, ActorNetwork, MultiHeadCriticNetwork_noise, SACActorNetwork
 
 
-def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alpha, buffer_beta):
+def experiment(alg, environment, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alpha, buffer_beta):
     #np.random.seed()
 
     logger = Logger(alg.__name__, results_dir=None)
@@ -35,7 +35,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alp
     # MDP
     horizon = 100
     gamma = 0.99
-    env_name = 'Humanoid-v3'
+    env_name = environment
     mdp = Gym(env_name, horizon, gamma)
 
     # Policy
@@ -128,7 +128,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alp
     print(f"save file {filename}")
     s = None
     for n in trange(n_epochs, leave=False):
-        core.learn(n_steps=n_steps, n_steps_per_fit=3)
+        core.learn(n_steps=n_steps, n_steps_per_fit=1)
         dataset = core.evaluate(n_steps=n_steps_test, render=False)
         s, *_ = parse_dataset(dataset)
         J = np.mean(compute_J(dataset, gamma))
@@ -152,6 +152,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='define experimental setup')
     parser.add_argument('--buffer', help='buffer sampling strategy [uniform, uncertainty, prioritized]', type=str, default="uniform")
     parser.add_argument('--alg', help='choose algorithm [SAC, DDPG, TD3]', type=str, default="sac")
+    parser.add_argument('--env', help='choose environment [Humanoid-v3, Ant-v3, etc.]', type=str, default="Humanoid-v3")
     parser.add_argument('--n_epochs', help='number of epochs per iteration', type=int, default=1000)
     parser.add_argument('--n_experiments', help='number of experiments ', type=int, default=1)
     args = parser.parse_args()
@@ -168,4 +169,4 @@ if __name__ == '__main__':
         alg = MultiHeadDDPG
 
     for _ in range(n_experiments):
-        experiment(alg=alg, n_epochs=n_epochs, n_steps=1000, n_steps_test=2000, buffer_strategy=buffer_strategy, buffer_alpha=1, buffer_beta=1)
+        experiment(alg=alg, environment=args.env, n_epochs=n_epochs,  n_steps=1000, n_steps_test=2000, buffer_strategy=buffer_strategy, buffer_alpha=1, buffer_beta=1)
