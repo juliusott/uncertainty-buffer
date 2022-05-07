@@ -9,8 +9,8 @@ from mushroom_rl.approximators import Regressor
 from mushroom_rl.approximators.parametric import TorchApproximator
 from approximators.masked_torch_regressor import  MaskedTorchApproximator
 from buffer.uncertainty_buffer import UncertaintyReplayMemory
-from buffer.prioritized_buffer import PrioritizedReplayMemory
-from mushroom_rl.utils.replay_memory import ReplayMemory #, PrioritizedReplayMemory
+# from buffer.prioritized_buffer import PrioritizedReplayMemory
+from mushroom_rl.utils.replay_memory import ReplayMemory , PrioritizedReplayMemory
 from mushroom_rl.utils.torch import to_float_tensor
 from mushroom_rl.utils.parameters import to_parameter
 import matplotlib.pyplot as plt
@@ -66,8 +66,8 @@ class MultiHeadSAC(DeepAC):
         self._tau = to_parameter(tau)
         self._reward_scale = 1
         self._buffer_strategy = buffer_strategy
-        self._buffer_alpha = 1 if buffer_alpha is None else 1.0
-        self._buffer_beta = 0.9 if buffer_beta is None else 0.9
+        self._buffer_alpha = 1 if buffer_alpha is None else buffer_alpha
+        self._buffer_beta = 1 if buffer_beta is None else buffer_beta
 
         if target_entropy is None:
             self._target_entropy = -np.prod(mdp_info.action_space.shape).astype(np.float32)
@@ -152,6 +152,7 @@ class MultiHeadSAC(DeepAC):
                 state, action, reward, next_state, absorbing, _ , num_visits, idx =\
                                                             self._replay_memory.get(self._batch_size())
                 weight = 1/num_visits
+                #weight = None
             else:
                 state, action, reward, next_state, absorbing, _, idx, is_weight = \
                                                             self._replay_memory.get(self._batch_size())
@@ -159,9 +160,9 @@ class MultiHeadSAC(DeepAC):
                 weight = is_weight
 
             td_pred  = self._critic_approximator.predict(state, action,  **self._critic_fit_params)
-            mask = np.array([td_pred[0, ...] !=0], dtype=np.float32)
+            mask = torch.from_numpy(np.array([td_pred[0, ...] !=0], dtype=np.float32))
             
-            if self._replay_memory.size > self._warmup_transitions():
+            if self._replay_memory.initialized:
                 action_new, log_prob = self.policy.compute_action_and_log_prob_t(state)
                 loss = self._loss(state, action_new, log_prob, mask)
                 self._optimize_actor_parameters(loss)
@@ -192,10 +193,11 @@ class MultiHeadSAC(DeepAC):
     def _loss(self, state, action_new, log_prob, mask):
         q = self._critic_approximator(state, action_new,
                                         output_tensor=True)
-        q = torch.squeeze(q[:, mask])
-        #print(f"q min {q[0, ...]} mask {mask}")
+        #q = torch.squeeze(q[:, mask])
+        #print(f"q min {q.shape} mask {mask}")
+        #print(q[0, mask!=0])
 
-        q = torch.sum(q, dim=1) / torch.sum(torch.from_numpy(mask))
+        q = torch.min(q[:, torch.squeeze(mask)!=0.0], dim=1).values 
 
         return (self._alpha * log_prob - q).mean()
 

@@ -44,6 +44,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alp
 
     # Settings
     initial_replay_size = 300
+    
     max_replay_size = 100000
     batch_size = 256
     n_features = 256
@@ -55,7 +56,8 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alp
     else:
         critic_network = MultiHeadCriticNetwork
 
-    if "SAC" in alg.__name__:
+    if "SAC" in alg.__name__ or "sac" in alg.__name__:
+        print("loading sac actor network")
         actor_network = SACActorNetwork
     else:
         actor_network = ActorNetwork
@@ -126,7 +128,7 @@ def experiment(alg, n_epochs, n_steps, n_steps_test, buffer_strategy, buffer_alp
     print(f"save file {filename}")
     s = None
     for n in trange(n_epochs, leave=False):
-        core.learn(n_steps=n_steps, n_steps_per_fit=1)
+        core.learn(n_steps=n_steps, n_steps_per_fit=3)
         dataset = core.evaluate(n_steps=n_steps_test, render=False)
         s, *_ = parse_dataset(dataset)
         J = np.mean(compute_J(dataset, gamma))
@@ -166,4 +168,4 @@ if __name__ == '__main__':
         alg = MultiHeadDDPG
 
     for _ in range(n_experiments):
-        experiment(alg=alg, n_epochs=n_epochs, n_steps=1000, n_steps_test=1500, buffer_strategy=buffer_strategy, buffer_alpha=1, buffer_beta=1)
+        experiment(alg=alg, n_epochs=n_epochs, n_steps=1000, n_steps_test=2000, buffer_strategy=buffer_strategy, buffer_alpha=1, buffer_beta=1)

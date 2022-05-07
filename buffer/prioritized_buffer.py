@@ -152,10 +152,9 @@ class PrioritizedReplayMemory(Serializable):
         self._max_priority = 1
         self._num_transitions = 0
         
-        #self.power_of_2_size = 1
-        #while self.power_of_2_size < max_size:
-        #    self.power_of_2_size *= 2
-        self.power_of_2_size = max_size
+        self.power_of_2_size = 1
+        while self.power_of_2_size < max_size:
+            self.power_of_2_size *= 2
 
         self._tree = SumTree(self.power_of_2_size, operation=SumTree.Operation.SUM)
         self._min_tree = SumTree(self.power_of_2_size, SumTree.Operation.MIN)
@@ -202,6 +201,7 @@ class PrioritizedReplayMemory(Serializable):
         segment_size = total_p / n_samples
         min_probability = self.min_priority / self._tree.total_p # min P(j) = min p^a / sum(p^a)
         max_weight = (min_probability * self.size) ** -self._beta()  # max wi
+        print(f"min prob {min_probability} {self.size} {max_weight}")
 
         for i in range(n_samples):
             segment_start = segment_size * i
@@ -236,6 +236,7 @@ class PrioritizedReplayMemory(Serializable):
         priority = (error + self._epsilon)
         #print(priority**self._alpha)
         for prio, index in zip(priority, idx):
+            print(f"prio {prio}")
             self._tree.update(index, prio ** self._alpha)
             self._min_tree.update(index, prio ** self._alpha)
             self._max_tree.update(index, prio)
