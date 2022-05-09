@@ -222,13 +222,17 @@ if __name__ == "__main__":
         alg = MultiHeadSAC
     elif algorithm == "td3" or algorithm.lower() == "td3":
         alg = MultiHeadTD3
-    else:
+    elif algorithm == "ddpg" or algorithm.lower() == "ddpg":
         alg = MultiHeadDDPG
+    else:
+        raise NotImplementedError(
+            "Unknown Algorithm. Choose one out of [SAC, DDPG, TD3]"
+        )
 
     if args.env not in [
         "Humanoid-v3",
         "Ant-v3",
-        "HalfCheeetah-v3",
+        "HalfCheetah-v3",
         "Walker2d-v3",
         "InvertedPendulum-v2",
     ]:
