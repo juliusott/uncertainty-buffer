@@ -232,7 +232,7 @@ if __name__ == "__main__":
     if args.env not in [
         "Humanoid-v3",
         "Ant-v3",
-        "HalfCheeetah-v3",
+        "HalfCheetah-v3",
         "Walker2d-v3",
         "InvertedPendulum-v2",
     ]:
