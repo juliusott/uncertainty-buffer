@@ -2,6 +2,7 @@ from copy import deepcopy
 
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from mushroom_rl.algorithms.actor_critic.deep_actor_critic import DeepAC
 from mushroom_rl.approximators import Regressor
 from mushroom_rl.approximators.parametric import TorchApproximator
@@ -204,7 +205,7 @@ class MultiHeadDDPG(DeepAC):
             td_pred = self._critic_approximator.predict(
                 state, action, **self._critic_fit_params
             )
-            mask = np.array([td_pred[0, ...] != 0], dtype=np.float32)
+            mask = torch.from_numpy(np.array([td_pred[0, ...] != 0], dtype=np.float32))
             if self._buffer_strategy == "uncertainty":
                 td_pred = self._critic_approximator.predict(
                     state, action, **self._critic_fit_params
@@ -244,7 +245,7 @@ class MultiHeadDDPG(DeepAC):
         q = self._critic_approximator(
             state, action, output_tensor=True, **self._critic_predict_params
         )
-        q = q[:, mask]
+        q = torch.min(q[:, torch.squeeze(mask) != 0.0], dim=1).values
         # print(f"q {q} mask {mask}")
         # q = torch.min(dim=1).values
         return -q.mean()

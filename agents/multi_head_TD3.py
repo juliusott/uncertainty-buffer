@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from mushroom_rl.utils.parameters import to_parameter
 
 from agents.multi_head_ddpg import MultiHeadDDPG
@@ -92,8 +93,7 @@ class MultiHeadTD3(MultiHeadDDPG):
         q = self._critic_approximator(
             state, action, output_tensor=True, **self._critic_predict_params
         )
-        q = q[:, np.array(mask)]
-        q = q.min(axis=1).values
+        q = torch.min(q[:, torch.squeeze(mask) != 0.0], dim=1).values
         return -q.mean()
 
     def _next_q(self, next_state, absorbing):
