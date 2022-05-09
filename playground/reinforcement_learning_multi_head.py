@@ -202,7 +202,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--env",
-        help="choose environment [Humanoid-v3, Ant-v3, HalfCheeetah-v3, Walker2d-v3, InvertedPendulum-v2]",
+        help="choose environment [Humanoid-v3, Ant-v3, HalfCheetah-v3, Walker2d-v3, InvertedPendulum-v2]",
         type=str,
         default="Humanoid-v3",
     )
@@ -233,7 +233,7 @@ if __name__ == "__main__":
         "InvertedPendulum-v2",
     ]:
         raise NotImplementedError(
-            "Unknown Environment. Choose one out of [Humanoid-v3, Ant-v3, HalfCheeetah-v3, Walker2d-v3, InvertedPendulum-v2]"
+            "Unknown Environment. Choose one out of [Humanoid-v3, Ant-v3, HalfCheetah-v3, Walker2d-v3, InvertedPendulum-v2]"
         )
 
     for _ in range(n_experiments):

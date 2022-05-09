@@ -86,7 +86,7 @@ class MultiHeadTD3(MultiHeadDDPG):
             buffer_strategy=buffer_strategy,
         )
 
-    def _loss(self, state, num_visits, mask):
+    def _loss(self, state, mask):
         action = self._actor_approximator(
             state, output_tensor=True, **self._actor_predict_params
         )

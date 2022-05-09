@@ -226,7 +226,7 @@ class MultiHeadDDPG(DeepAC):
                 self._replay_memory.update(np.squeeze(td_error), idx=idx)
 
             if self._fit_count % self._policy_delay() == 0:
-                loss = self._loss(state, num_visits, mask)
+                loss = self._loss(state, mask)
                 self._optimize_actor_parameters(loss)
 
             self._update_target(
@@ -238,7 +238,7 @@ class MultiHeadDDPG(DeepAC):
 
             self._fit_count += 1
 
-    def _loss(self, state, num_visits, mask):
+    def _loss(self, state, mask):
         action = self._actor_approximator(
             state, output_tensor=True, **self._actor_predict_params
         )
