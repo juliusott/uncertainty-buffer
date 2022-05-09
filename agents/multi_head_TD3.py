@@ -1,10 +1,7 @@
 import numpy as np
-import torch
+from mushroom_rl.utils.parameters import to_parameter
 
 from agents.multi_head_ddpg import MultiHeadDDPG
-
-from mushroom_rl.policy import Policy
-from mushroom_rl.utils.parameters import to_parameter
 
 
 class MultiHeadTD3(MultiHeadDDPG):
@@ -13,11 +10,26 @@ class MultiHeadTD3(MultiHeadDDPG):
     "Addressing Function Approximation Error in Actor-Critic Methods".
     Fujimoto S. et al.. 2018.
     """
-    def __init__(self, mdp_info, policy_class, policy_params, actor_params,
-                 actor_optimizer, critic_params, batch_size,
-                 initial_replay_size, max_replay_size, tau, policy_delay=2,
-                 noise_std=.2, noise_clip=.5, critic_fit_params=None, warmup_transitions=100,
-                 buffer_strategy="uniform"):
+
+    def __init__(
+        self,
+        mdp_info,
+        policy_class,
+        policy_params,
+        actor_params,
+        actor_optimizer,
+        critic_params,
+        batch_size,
+        initial_replay_size,
+        max_replay_size,
+        tau,
+        policy_delay=2,
+        noise_std=0.2,
+        noise_clip=0.5,
+        critic_fit_params=None,
+        warmup_transitions=100,
+        buffer_strategy="uniform",
+    ):
         """
         Constructor.
         Args:
@@ -54,19 +66,32 @@ class MultiHeadTD3(MultiHeadDDPG):
             critic_params['n_models'] = 2
         """
 
-        self._add_save_attr(
-            _noise_std='mushroom',
-            _noise_clip='mushroom'
+        self._add_save_attr(_noise_std="mushroom", _noise_clip="mushroom")
+
+        super().__init__(
+            mdp_info,
+            policy_class,
+            policy_params,
+            actor_params,
+            actor_optimizer,
+            critic_params,
+            batch_size,
+            initial_replay_size,
+            max_replay_size,
+            tau,
+            policy_delay,
+            critic_fit_params,
+            warmup_transitions=warmup_transitions,
+            buffer_strategy=buffer_strategy,
         )
 
-        super().__init__(mdp_info, policy_class, policy_params,  actor_params,
-                         actor_optimizer, critic_params, batch_size,
-                         initial_replay_size, max_replay_size, tau,
-                         policy_delay, critic_fit_params, warmup_transitions=warmup_transitions, buffer_strategy=buffer_strategy)
-
     def _loss(self, state, num_visits, mask):
-        action = self._actor_approximator(state, output_tensor=True, **self._actor_predict_params)
-        q = self._critic_approximator(state, action, output_tensor=True, **self._critic_predict_params)
+        action = self._actor_approximator(
+            state, output_tensor=True, **self._actor_predict_params
+        )
+        q = self._critic_approximator(
+            state, action, output_tensor=True, **self._critic_predict_params
+        )
         q = q[:, np.array(mask)]
         q = q.min(axis=1).values
         return -q.mean()
@@ -90,8 +115,12 @@ class MultiHeadTD3(MultiHeadDDPG):
         eps_clipped = np.clip(eps, -self._noise_clip(), self._noise_clip.get_value())
         a_smoothed = np.clip(a + eps_clipped, low, high)
 
-        q = self._target_critic_approximator.predict(next_state, a_smoothed, **self._critic_predict_params)
-        
-        q *= np.ones(q.shape) -  np.repeat(np.expand_dims(absorbing, axis=1), self.n_heads, axis=1)
+        q = self._target_critic_approximator.predict(
+            next_state, a_smoothed, **self._critic_predict_params
+        )
+
+        q *= np.ones(q.shape) - np.repeat(
+            np.expand_dims(absorbing, axis=1), self.n_heads, axis=1
+        )
 
         return q

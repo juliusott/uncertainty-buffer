@@ -2,4 +2,8 @@ __pycache__/
 *.npy
 *png
 .vscode/
+.flake8
+.trunk/
 *txt
+.isort.cfg
+.markdownlint*
