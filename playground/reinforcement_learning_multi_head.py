@@ -220,7 +220,7 @@ if __name__ == "__main__":
     n_experiments = int(args.n_experiments)
     if algorithm == "sac" or algorithm.lower() == "sac":
         alg = MultiHeadSAC
-    elif algorithm == "td3":
+    elif algorithm == "td3" or algorithm.lower() == "td3":
         alg = MultiHeadTD3
     else:
         alg = MultiHeadDDPG
