@@ -1,0 +1,16 @@
+name: mujoco
+
+channels:
+  - conda-forge
+  - menpo
+
+dependencies:
+  - python
+  - glew
+  - mesalib
+  - glfw3
+  - pip:
+    - mujoco-py
+    - gym
+    - patchelf
+    - mushroom_rl
