@@ -33,6 +33,7 @@ def experiment(
     n_steps,
     n_steps_test,
     buffer_strategy,
+    buffer_size,
     buffer_alpha,
     buffer_beta,
 ):
@@ -57,7 +58,7 @@ def experiment(
     # Settings
     initial_replay_size = 300
 
-    max_replay_size = 100000
+    max_replay_size = buffer_size
     batch_size = 256
     n_features = 256
     tau = 0.001
@@ -158,9 +159,9 @@ def experiment(
     logger.epoch_info(0, J=J, R=R)
     rewards = list()
     k = 1
-    filename = f"{alg.__name__}{k}_{env_name}_{buffer_strategy}_noise{use_noise}_alpha{buffer_alpha}_beta{buffer_beta}.npy"
+    filename = f"{alg.__name__}{k}_{env_name}_{buffer_strategy}_noise{use_noise}_alpha{buffer_alpha}_beta{buffer_beta}_size{buffer_size}.npy"
     while os.path.isfile(filename):
-        filename = f"{alg.__name__}{k}_{env_name}_{buffer_strategy}_noise{use_noise}_alpha{buffer_alpha}_beta{buffer_beta}.npy"
+        filename = f"{alg.__name__}{k}_{env_name}_{buffer_strategy}_noise{use_noise}_alpha{buffer_alpha}_beta{buffer_beta}_size{buffer_size}.npy"
         k += 1
     print(f"save file {filename}")
     # Create empty file as placeholder to prevent overwriting
@@ -196,6 +197,12 @@ if __name__ == "__main__":
         help="buffer sampling strategy [uniform, uncertainty, prioritized]",
         type=str,
         default="uniform",
+    )
+    parser.add_argument(
+        "--buffer_size",
+        help="buffer sampling strategy [uniform, uncertainty, prioritized]",
+        type=int,
+        default=100000,
     )
     parser.add_argument(
         "--alg", help="choose algorithm [SAC, DDPG, TD3]", type=str, default="sac"

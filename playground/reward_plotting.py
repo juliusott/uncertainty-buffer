@@ -6,6 +6,7 @@ import pandas as pd
 
 
 def get_recorded_rewards(directory, steps_per_epoch=1000, *keywords):
+    fig, ax = plt.subplots(figsize=(14,7))
     valid_recordings = []
     num_keys = len([key for key in keywords])
     for record in os.listdir(directory):
@@ -24,6 +25,7 @@ def get_recorded_rewards(directory, steps_per_epoch=1000, *keywords):
         data = np.expand_dims(np.load(valid_recording), axis=1)
         if data.shape[0] == 1000:
             data_to_concat.append(data)
+            ax.plot(data, label=valid_recording[-7:])
         else:
             print(valid_recording)
     data = np.concatenate(
@@ -41,6 +43,8 @@ def get_recorded_rewards(directory, steps_per_epoch=1000, *keywords):
     data_as_frame = pd.DataFrame(data=data_extended).interpolate(
         method="linear", axis=0
     )
+    ax.legend()
+    plt.show()
     data_mean = np.mean(data_as_frame.to_numpy(), axis=1)
     data_std = np.std(data_as_frame.to_numpy(), axis=1)
     max_val = np.amax(data_as_frame.to_numpy())
@@ -48,7 +52,7 @@ def get_recorded_rewards(directory, steps_per_epoch=1000, *keywords):
     return data_mean, data_std, max_val, min_val
 
 
-env_name = "Walker2d-v3"
+env_name = "Ant-v3"
 alg_name = "SAC"
 
 (
