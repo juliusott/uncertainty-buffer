@@ -201,7 +201,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--buffer_size",
         help="buffer sampling strategy [uniform, uncertainty, prioritized]",
-        type=int,
+        type=float,
         default=100000,
     )
     parser.add_argument(
@@ -255,6 +255,7 @@ if __name__ == "__main__":
             n_steps=1000,
             n_steps_test=2000,
             buffer_strategy=buffer_strategy,
+            buffer_size=int(args.buffer_size),
             buffer_alpha=1,
             buffer_beta=1,
         )
