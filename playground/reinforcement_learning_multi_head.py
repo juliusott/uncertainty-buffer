@@ -235,16 +235,22 @@ if __name__ == "__main__":
         raise NotImplementedError(
             "Unknown Algorithm. Choose one out of [SAC, DDPG, TD3]"
         )
-
-    if args.env not in [
+    list_env = [
         "Humanoid-v3",
         "Ant-v3",
         "HalfCheetah-v3",
         "Walker2d-v3",
         "InvertedPendulum-v2",
-    ]:
+        "InvertedDoublePendulum-v2",
+        "HumanoidStandup-v3",
+        "Reacher-v3",
+        "Swimmer-v3",
+        "Hopper-v3",
+    ]
+    
+    if args.env not in list_env:
         raise NotImplementedError(
-            "Unknown Environment. Choose one out of [Humanoid-v3, Ant-v3, HalfCheetah-v3, Walker2d-v3, InvertedPendulum-v2]"
+            f"Unknown Environment. {list_env}"
         )
 
     for _ in range(n_experiments):
