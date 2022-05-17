@@ -242,8 +242,8 @@ if __name__ == "__main__":
         "Walker2d-v3",
         "InvertedPendulum-v2",
         "InvertedDoublePendulum-v2",
-        "HumanoidStandup-v3",
-        "Reacher-v3",
+        "HumanoidStandup-v2",
+        "Reacher-v2",
         "Swimmer-v3",
         "Hopper-v3",
     ]
