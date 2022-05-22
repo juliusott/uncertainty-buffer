@@ -13,7 +13,6 @@ from mushroom_rl.utils.dataset import compute_J, parse_dataset
 from tqdm import trange
 
 sys.path.append("./")
-print(sys.path)
 
 from agents.mult_head_sac import MultiHeadSAC
 from agents.multi_head_ddpg import MultiHeadDDPG
