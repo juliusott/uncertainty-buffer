@@ -202,7 +202,7 @@ if __name__ == "__main__":
         "--buffer_size",
         help="buffer sampling strategy [uniform, uncertainty, prioritized]",
         type=float,
-        default=100000,
+        default=1e5,
     )
     parser.add_argument(
         "--alg", help="choose algorithm [SAC, DDPG, TD3]", type=str, default="sac"
