@@ -48,3 +48,4 @@ python playground/reinforcement_learning_multi_head.py --buffer=uncertainty --bu
 2. compress the the directory with the code to a zip file
 3. follow the steps in the explanation video
 
+ ./uncertainty-buffer/notebook_explained.mkv
