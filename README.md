@@ -3,11 +3,31 @@ Introduce uncertainty sampling based on critic estimates
 
 ## Environment Setup for Conda
 
+The experiments rely on MuJoCo being installed. Follow the instructions from [`mujoco-py`](https://github.com/openai/mujoco-py#install-mujoco) and download the archive with MuJoCo (version 2.1.0). Then extract the file into the standard path `~/.mujoco/mujoco210`.
+
+After this step, we use [`conda`](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#creating-an-environment-from-an-environment-yml-file) to create a `python` environment with all the dependencies:
 ```bash
 conda env create -f ./scripts/environment.yml
 conda activate mujoco
-python -m pip install -r requirements.txt
 ```
+
+This will install the latest versions of the packages in `./scripts/environment.yml`. If you want to use exactly the same versions we use (and you are on on a `linux-64` platform) you can use
+
+```bash
+conda create --name mujoco --file ./scripts/explicit_env_specs_linux64.txt
+conda activate mujoco
+```
+
+In order to run the codes you then need to activate the `conda` environment and set some variables (to allow MuJoCo to compile some libraries).
+We used `gcc` v8.3.0 and added the following `env` variables:
+
+```bash
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:<YOUR-HOME>/.mujoco/mujoco210/bin
+export CPATH=<YOUR-CONDA-PREFIX>/envs/mujoco/include
+```
+
+where you should change `<YOUR-HOME>` to your home folder and `<YOUR-CONDA-PREFIX>` to the loation of the `conda` installation.
+
 
 ## Code execution from terminal
 
