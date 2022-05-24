@@ -1,5 +1,6 @@
 # uncertainty-buffer
-Introduce uncertainty sampling based on critic estimates
+
+Here we introduce a new sampling strategy for buffers in reinforcement learning that is based on critic estimates.
 
 ## Environment Setup for Conda
 
@@ -28,7 +29,10 @@ export CPATH=<YOUR-CONDA-PREFIX>/envs/mujoco/include
 
 where you should change `<YOUR-HOME>` to your home folder and `<YOUR-CONDA-PREFIX>` to the loation of the `conda` installation.
 
+The code is tested with
 
+* Python (3.9.12)
+* Python (3.10.4)
 ## Code execution from terminal
 
 ### arguments
@@ -62,7 +66,8 @@ python playground/reinforcement_learning_multi_head.py --buffer=uncertainty --bu
 
 ```
 
-### Google Colab Execution
+## Google Colab Execution
+### These steps need no further installation and works out of the box
 
 1. upload example_notebook.ipynb in google colab
 2. compress the the directory with the code to a zip file
